@@ -25,12 +25,16 @@ services:
       - back-orbit-data:/var/lib/back-orbit
       - /var/run/docker.sock:/var/run/docker.sock:ro
     # The container's non-root user (uid 10001) needs permission to read
-    # the socket. Set this to the GID that owns /var/run/docker.sock on
-    # your host (`stat -c '%g' /var/run/docker.sock` on Linux; on Docker
-    # Desktop the socket is typically owned by a group that's world/GID
-    # accessible already, so this may not be required there).
+    # the socket. Default (0 = root) is correct for Docker Desktop (macOS/
+    # Windows), where the socket is always owned by root inside its Linux
+    # VM regardless of host-side permissions. On native Linux Docker, the
+    # daemon's socket is usually owned by a "docker" group instead — find
+    # its GID from inside a container (works everywhere, unlike a host-side
+    # `stat`, which can be misleading on Docker Desktop):
+    #   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock alpine stat -c '%g' /var/run/docker.sock
+    # then set DOCKER_GID to that value in a .env file next to this one.
     group_add:
-      - "${DOCKER_GID:-999}"
+      - "${DOCKER_GID:-0}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
