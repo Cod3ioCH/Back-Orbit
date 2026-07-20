@@ -1,0 +1,62 @@
+# Recommended production-leaning setup: Back-Orbit never touches
+# /var/run/docker.sock directly. Instead, a Docker Socket Proxy
+# (https://github.com/Tecnativa/docker-socket-proxy) exposes a minimal,
+# read-focused subset of the Docker API over plain TCP on an internal
+# network. Back-Orbit connects to the proxy instead of the socket, so its
+# own container needs no elevated privileges at all — see
+# docs/threat-model.md for the full rationale.
+#
+# Usage: docker compose -f deploy/docker-compose.socket-proxy.yml up --build
+#
+# Note: the proxy's default permission set below only allows the read
+# operations Back-Orbit's project-discovery phase needs (CONTAINERS,
+# IMAGES, VOLUMES, NETWORKS, PING). Later phases that create helper
+# containers for backups/restores will need write access
+# (POST=1, EXEC=1) — extend this list when that phase ships, not before.
+
+services:
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      VOLUMES: 1
+      NETWORKS: 1
+      PING: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - back-orbit-internal
+    restart: unless-stopped
+
+  back-orbit:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: back-orbit:local
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      BACKORBIT_HTTP_ADDR: 0.0.0.0:8080
+      BACKORBIT_DATA_DIR: /var/lib/back-orbit
+      BACKORBIT_DOCKER_HOST: tcp://docker-socket-proxy:2375
+    volumes:
+      - back-orbit-data:/var/lib/back-orbit
+    networks:
+      - back-orbit-internal
+    depends_on:
+      - docker-socket-proxy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  back-orbit-internal:
+
+volumes:
+  back-orbit-data:

@@ -1,0 +1,30 @@
+# Local S3-compatible object storage for developing and testing the
+# S3 repository backend against (see docs/adr and the Repositories phase
+# in docs/architecture.md — not implemented yet, but this environment is
+# provided ahead of time so that phase's development and tests have
+# somewhere to point at without needing real cloud credentials).
+#
+# Usage: docker compose -f deploy/docker-compose.minio.yml up
+# Console: http://localhost:9001 (login: backorbit / backorbit-dev-secret)
+# S3 endpoint: http://localhost:9000
+
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: backorbit
+      MINIO_ROOT_PASSWORD: backorbit-dev-secret
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - back-orbit-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  back-orbit-minio-data:

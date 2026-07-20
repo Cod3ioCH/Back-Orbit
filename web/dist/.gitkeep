@@ -1,0 +1,5 @@
+This directory is populated by `npm run build` in web/. The placeholder
+file exists so `go build` succeeds via go:embed even before the frontend
+has been built (e.g. in a fresh checkout, or during backend-only
+development). It is not served — a real frontend build overwrites this
+directory entirely.

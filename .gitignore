@@ -1,0 +1,27 @@
+# Go
+/back-orbit
+/back-orbit-cli
+*.test
+*.out
+
+# Data
+/var/
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# Frontend
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+web/.vite/
+
+# Env
+.env
+.env.local
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
