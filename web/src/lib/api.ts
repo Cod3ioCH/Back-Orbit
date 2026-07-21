@@ -182,6 +182,29 @@ export interface ProtectionBlueprint {
   findings: BlueprintFinding[];
   steps: { order: number; action: string; description: string }[];
   warnings: string[];
+  templateMatches?: ProtectionTemplateMatch[];
+}
+
+export interface ProtectionTemplatePlan {
+  classification: "rebuildable" | "configuration-only" | "stateful-filesystem" | "stateful-database" | "stateful-mixed" | "unknown";
+  consistency: "crash-consistent" | "filesystem-consistent" | "application-consistent";
+  requiredData: string[];
+  databaseStrategy?: string[];
+  includeHints?: string[];
+  excludeHints?: string[];
+  warnings?: string[];
+  restoreChecks: string[];
+}
+
+export interface ProtectionTemplateMatch {
+  templateId: string;
+  name: string;
+  version: string;
+  category: string;
+  score: number;
+  matched: string[];
+  missing: string[];
+  plan: ProtectionTemplatePlan;
 }
 
 export interface AuditEvent {

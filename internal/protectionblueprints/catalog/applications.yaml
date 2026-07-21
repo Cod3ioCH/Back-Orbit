@@ -1,0 +1,127 @@
+schemaVersion: 1
+templates:
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: wordpress-mariadb, name: WordPress with MariaDB, version: 1.0.0, category: content, upstream: https://wordpress.org/, tags: [php, cms]}
+    match: {requiredImageGroups: [[wordpress], [mariadb]], requiredTechnologies: [mariadb]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [WordPress content, MariaDB logical dump], databaseStrategy: [mariadb-dump], includeHints: [/var/www/html, /var/lib/mysql], excludeHints: [cache], restoreChecks: [HTTP responds, database connection succeeds]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: nextcloud-postgresql, name: Nextcloud with PostgreSQL and Redis, version: 1.0.0, category: cloud, upstream: https://nextcloud.com/, tags: [files, collaboration]}
+    match: {requiredImageGroups: [[nextcloud], [postgres]], optionalImages: [redis, valkey], requiredTechnologies: [postgresql], optionalTechnologies: [redis]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [Nextcloud config, apps and user data, PostgreSQL logical dump], databaseStrategy: [pg_dump], includeHints: [/var/www/html/config, /var/www/html/custom_apps, /var/www/html/data], warnings: [Maintenance mode is recommended around the coordinated capture.], restoreChecks: [occ status succeeds, HTTP responds]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: paperless-ngx, name: Paperless-ngx, version: 1.0.0, category: documents, upstream: https://docs.paperless-ngx.com/, tags: [documents, python]}
+    match: {requiredImageGroups: [[paperless-ngx], [postgres]], optionalImages: [redis], requiredTechnologies: [postgresql]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [data, media, consume and export directories, PostgreSQL logical dump], databaseStrategy: [pg_dump], includeHints: [/usr/src/paperless/data, /usr/src/paperless/media, /usr/src/paperless/export], restoreChecks: [web health succeeds, seeded document is searchable]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: immich, name: Immich, version: 1.0.0, category: media, upstream: https://immich.app/, tags: [photos, nodejs]}
+    match: {requiredImageGroups: [[immich-server], [postgres]], optionalImages: [redis, valkey, immich-machine-learning], requiredTechnologies: [postgresql]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [upload library, PostgreSQL logical dump], databaseStrategy: [pg_dump], includeHints: [/usr/src/app/upload], warnings: [Database extensions and image digest must be preserved for compatible restore.], restoreChecks: [server health succeeds, seeded asset is visible]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: vaultwarden-sqlite, name: Vaultwarden with SQLite, version: 1.0.0, category: security, upstream: https://github.com/dani-garcia/vaultwarden, tags: [passwords, rust]}
+    match: {requiredImageGroups: [[vaultwarden]], requiredTechnologies: [sqlite]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [SQLite online backup, attachments, sends and RSA keys], databaseStrategy: [sqlite-online-backup], includeHints: [/data], warnings: [The complete data directory and encryption-related configuration are required together.], restoreChecks: [health endpoint succeeds, test vault can be unlocked]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: vaultwarden-postgresql, name: Vaultwarden with PostgreSQL, version: 1.0.0, category: security, upstream: https://github.com/dani-garcia/vaultwarden, tags: [passwords, rust]}
+    match: {requiredImageGroups: [[vaultwarden], [postgres]], requiredTechnologies: [postgresql]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [PostgreSQL logical dump, attachments, sends and RSA keys], databaseStrategy: [pg_dump], includeHints: [/data], restoreChecks: [health endpoint succeeds, test vault can be unlocked]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: gitea-postgresql, name: Gitea with PostgreSQL, version: 1.0.0, category: development, upstream: https://about.gitea.com/, tags: [git, go]}
+    match: {requiredImageGroups: [[gitea], [postgres]], requiredTechnologies: [postgresql]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [repositories, LFS and attachments, PostgreSQL logical dump], databaseStrategy: [pg_dump], includeHints: [/data], restoreChecks: [HTTP responds, seeded repository can be cloned]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: forgejo-sqlite, name: Forgejo with SQLite, version: 1.0.0, category: development, upstream: https://forgejo.org/, tags: [git, go]}
+    match: {requiredImageGroups: [[forgejo]], requiredTechnologies: [sqlite]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [repositories, LFS and attachments, SQLite online backup], databaseStrategy: [sqlite-online-backup], includeHints: [/data], restoreChecks: [HTTP responds, seeded repository can be cloned]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: uptime-kuma, name: Uptime Kuma, version: 1.0.0, category: monitoring, upstream: https://github.com/louislam/uptime-kuma, tags: [nodejs, monitoring]}
+    match: {requiredImageGroups: [[uptime-kuma]], requiredTechnologies: [sqlite]}
+    plan: {classification: stateful-filesystem, consistency: application-consistent, requiredData: [SQLite online backup and application data], databaseStrategy: [sqlite-online-backup], includeHints: [/app/data], restoreChecks: [web UI responds, seeded monitor exists]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: n8n-postgresql, name: n8n with PostgreSQL, version: 1.0.0, category: automation, upstream: https://n8n.io/, tags: [nodejs, workflows]}
+    match: {requiredImageGroups: [[n8n], [postgres]], requiredTechnologies: [postgresql]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [PostgreSQL logical dump, n8n data directory, encryption key mapping], databaseStrategy: [pg_dump], includeHints: [/home/node/.n8n], warnings: [The original encryption key is mandatory to decrypt stored credentials.], restoreChecks: [health endpoint succeeds, seeded workflow exists]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: home-assistant, name: Home Assistant, version: 1.0.0, category: automation, upstream: https://www.home-assistant.io/, tags: [python, iot]}
+    match: {requiredImageGroups: [[home-assistant]]}
+    plan: {classification: stateful-filesystem, consistency: filesystem-consistent, requiredData: [configuration and application state], includeHints: [/config], excludeHints: [home-assistant.log], warnings: [SQLite may be present; application-consistent capture is preferred when detected.], restoreChecks: [HTTP responds, configuration check succeeds]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: node-red, name: Node-RED, version: 1.0.0, category: automation, upstream: https://nodered.org/, tags: [nodejs, iot]}
+    match: {requiredImageGroups: [[nodered/node-red]]}
+    plan: {classification: stateful-filesystem, consistency: filesystem-consistent, requiredData: [flows, credential file and settings], includeHints: [/data], excludeHints: [node_modules], warnings: [The credentialSecret mapping is required to decrypt protected flow credentials.], restoreChecks: [HTTP responds, seeded flow exists]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: jellyfin, name: Jellyfin, version: 1.0.0, category: media, upstream: https://jellyfin.org/, tags: [streaming, dotnet]}
+    match: {requiredImageGroups: [[jellyfin]]}
+    plan: {classification: stateful-filesystem, consistency: filesystem-consistent, requiredData: [configuration and metadata], includeHints: [/config], excludeHints: [/cache, read-only media libraries], restoreChecks: [health endpoint succeeds, seeded library is present]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: navidrome, name: Navidrome, version: 1.0.0, category: media, upstream: https://www.navidrome.org/, tags: [music, go]}
+    match: {requiredImageGroups: [[navidrome]], requiredTechnologies: [sqlite]}
+    plan: {classification: stateful-filesystem, consistency: application-consistent, requiredData: [SQLite online backup and application data], databaseStrategy: [sqlite-online-backup], includeHints: [/data], excludeHints: [read-only music library], restoreChecks: [HTTP responds, seeded library is present]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: audiobookshelf, name: Audiobookshelf, version: 1.0.0, category: media, upstream: https://www.audiobookshelf.org/, tags: [audiobooks, nodejs]}
+    match: {requiredImageGroups: [[audiobookshelf]]}
+    plan: {classification: stateful-filesystem, consistency: filesystem-consistent, requiredData: [configuration, metadata and podcasts], includeHints: [/config, /metadata], excludeHints: [read-only audiobook libraries], restoreChecks: [health endpoint succeeds, seeded library is present]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: ghost-mysql, name: Ghost with MySQL, version: 1.0.0, category: content, upstream: https://ghost.org/, tags: [nodejs, cms]}
+    match: {requiredImageGroups: [[ghost], [mysql]], requiredTechnologies: [mysql]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [Ghost content, MySQL logical dump], databaseStrategy: [mysqldump], includeHints: [/var/lib/ghost/content], restoreChecks: [HTTP responds, seeded post exists]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: bookstack-mariadb, name: BookStack with MariaDB, version: 1.0.0, category: content, upstream: https://www.bookstackapp.com/, tags: [php, wiki]}
+    match: {requiredImageGroups: [[bookstack], [mariadb]], requiredTechnologies: [mariadb]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [uploads and storage, MariaDB logical dump], databaseStrategy: [mariadb-dump], includeHints: [/config, /var/www/bookstack/public/uploads], restoreChecks: [HTTP responds, seeded book exists]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: vikunja-postgresql, name: Vikunja with PostgreSQL, version: 1.0.0, category: productivity, upstream: https://vikunja.io/, tags: [go, tasks]}
+    match: {requiredImageGroups: [[vikunja], [postgres]], requiredTechnologies: [postgresql]}
+    plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [files, PostgreSQL logical dump], databaseStrategy: [pg_dump], includeHints: [/app/vikunja/files], restoreChecks: [API health succeeds, seeded project exists]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: grafana-observability, name: Grafana with Prometheus and Loki, version: 1.0.0, category: monitoring, upstream: https://grafana.com/, tags: [metrics, logs]}
+    match: {requiredImageGroups: [[grafana], [prometheus], [loki]]}
+    plan: {classification: stateful-mixed, consistency: filesystem-consistent, requiredData: [Grafana state and provisioning, Prometheus TSDB, Loki data and configs], includeHints: [/var/lib/grafana, /prometheus, /loki], warnings: [Crash-consistent TSDB copies may require repair; native snapshots are preferred.], restoreChecks: [Grafana health succeeds, Prometheus is ready, Loki is ready]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: gotify-sqlite, name: Gotify with SQLite, version: 1.0.0, category: notifications, upstream: https://gotify.net/, tags: [go, notifications]}
+    match: {requiredImageGroups: [[gotify]], requiredTechnologies: [sqlite]}
+    plan: {classification: stateful-filesystem, consistency: application-consistent, requiredData: [SQLite online backup and application data], databaseStrategy: [sqlite-online-backup], includeHints: [/app/data], restoreChecks: [health endpoint succeeds, seeded application exists]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: ntfy-sqlite, name: ntfy with SQLite, version: 1.0.0, category: notifications, upstream: https://ntfy.sh/, tags: [go, notifications]}
+    match: {requiredImageGroups: [[binwiederhier/ntfy]], requiredTechnologies: [sqlite]}
+    plan: {classification: stateful-filesystem, consistency: application-consistent, requiredData: [SQLite cache database, attachments and configuration], databaseStrategy: [sqlite-online-backup], includeHints: [/var/cache/ntfy, /etc/ntfy], restoreChecks: [health endpoint succeeds, test topic accepts a message]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: minio, name: MinIO, version: 1.0.0, category: infrastructure, upstream: https://min.io/, tags: [s3, object-storage]}
+    match: {requiredImageGroups: [[minio/minio]]}
+    plan: {classification: stateful-filesystem, consistency: filesystem-consistent, requiredData: [object data and server configuration], includeHints: [/data], warnings: [Distributed deployments require a coordinated quorum-aware strategy.], restoreChecks: [health endpoint succeeds, seeded object checksum matches]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: postgresql-pgadmin, name: PostgreSQL with pgAdmin, version: 1.0.0, category: infrastructure, upstream: https://www.postgresql.org/, tags: [database, admin]}
+    match: {requiredImageGroups: [[postgres], [pgadmin]], requiredTechnologies: [postgresql]}
+    plan: {classification: stateful-database, consistency: application-consistent, requiredData: [PostgreSQL logical dump, pgAdmin configuration], databaseStrategy: [pg_dump], includeHints: [/var/lib/pgadmin], restoreChecks: [database accepts queries, seeded rows match]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: mongodb-express, name: MongoDB with mongo-express, version: 1.0.0, category: infrastructure, upstream: https://www.mongodb.com/, tags: [database, admin]}
+    match: {requiredImageGroups: [[mongo], [mongo-express]], requiredTechnologies: [mongodb]}
+    plan: {classification: stateful-database, consistency: application-consistent, requiredData: [MongoDB logical dump], databaseStrategy: [mongodump], includeHints: [/data/db], restoreChecks: [database ping succeeds, seeded documents match]}
+  - apiVersion: back-orbit.io/v1alpha1
+    kind: ProtectionTemplate
+    metadata: {id: valkey-worker, name: Valkey with Worker, version: 1.0.0, category: infrastructure, upstream: https://valkey.io/, tags: [cache, queue]}
+    match: {requiredImageGroups: [[valkey]], requiredTechnologies: [valkey]}
+    plan: {classification: stateful-database, consistency: application-consistent, requiredData: [RDB or AOF when durable], databaseStrategy: [controlled-save], includeHints: [/data], warnings: [Confirm whether this instance is durable state or a rebuildable cache before enabling backup.], restoreChecks: [ping succeeds, seeded durable key exists]}

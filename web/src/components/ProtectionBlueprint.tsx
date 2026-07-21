@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Database, FileKey, FolderArchive, RefreshCw, ScanSearch } from "lucide-react";
+import { AlertTriangle, Check, Database, FileKey, FolderArchive, RefreshCw, ScanSearch, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError, api, type BlueprintFinding } from "@/lib/api";
+import { ApiError, api, type BlueprintFinding, type ProtectionTemplateMatch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const icons = { database: Database, storage: FolderArchive, secret: FileKey, configuration: FileKey };
@@ -58,10 +58,19 @@ export function ProtectionBlueprint({ projectId }: { projectId: string }) {
         <div className="flex gap-2"><Button variant="outline" onClick={() => analyze.mutate()} disabled={analyze.isPending}><RefreshCw className={cn("size-4", analyze.isPending && "animate-spin")} />Re-analyze</Button><Button onClick={() => confirm.mutate()} disabled={confirm.isPending || (!!bp.confirmedAt && !bp.drifted)}>{confirm.isPending ? "Confirming…" : "Confirm blueprint"}</Button></div>
       </CardContent>
     </Card>
+    {bp.templateMatches?.[0] && <TemplateMatch match={bp.templateMatches[0]} alternatives={(bp.templateMatches.length - 1)} />}
     {bp.findings.length === 0 && <Alert><AlertDescription>No persistent components were identified. This is not proof that the project is stateless; review its configuration manually.</AlertDescription></Alert>}
     {Object.entries(grouped).map(([kind, findings]) => findings && <FindingGroup key={kind} kind={kind} findings={findings} />)}
     <Card><CardHeader><CardTitle className="text-base">Recommended backup sequence</CardTitle><p className="mt-1 text-sm text-muted-foreground">Advice for you, not a description of what runs. Back-Orbit does not yet create database dumps itself: a backup copies the files as they are, except for SQLite, which it captures consistently. Stop a database service before backing it up, or take a dump alongside the snapshot.</p></CardHeader><CardContent><ol className="space-y-4">{bp.steps.map((step) => <li key={step.action} className="flex gap-3"><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{step.order}</span><div><div className="font-medium capitalize">{step.action.replaceAll("_", " ")}</div><p className="mt-0.5 text-sm text-muted-foreground">{step.description}</p></div></li>)}</ol></CardContent></Card>
   </div>;
+}
+
+function TemplateMatch({ match, alternatives }: { match: ProtectionTemplateMatch; alternatives: number }) {
+  return <Card className="border-primary/20 bg-primary/[0.025]"><CardHeader><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="size-4 text-primary" />Known application blueprint</CardTitle><p className="mt-1 text-sm text-muted-foreground">{match.name} · template {match.version}{alternatives > 0 ? ` · ${alternatives} alternative match${alternatives === 1 ? "" : "es"}` : ""}</p></div><Badge variant="outline" className="border-primary/30 text-primary">{match.score}% match</Badge></div></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap gap-2"><Badge variant="secondary">{match.plan.classification.replaceAll("-", " ")}</Badge><Badge variant="secondary">{match.plan.consistency}</Badge></div><div className="grid gap-4 md:grid-cols-2"><TemplateList title="Required recovery data" items={match.plan.requiredData}/><TemplateList title="Restore verification" items={match.plan.restoreChecks}/></div>{match.missing.length > 0 && <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Optional differences</p><ul className="mt-2 space-y-1 text-sm text-muted-foreground">{match.missing.map(item=><li key={item}>• {item}</li>)}</ul></div>}{match.plan.warnings?.map(warning=><Alert key={warning}><AlertTriangle className="size-4"/><AlertDescription>{warning}</AlertDescription></Alert>)}</CardContent></Card>;
+}
+
+function TemplateList({ title, items }: { title: string; items: string[] }) {
+  return <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</p><ul className="mt-2 space-y-1.5 text-sm">{items.map(item=><li key={item} className="flex gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-success"/><span>{item}</span></li>)}</ul></div>;
 }
 
 function FindingGroup({ kind, findings }: { kind: string; findings: BlueprintFinding[] }) {

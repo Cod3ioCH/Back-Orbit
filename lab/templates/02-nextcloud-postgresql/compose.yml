@@ -1,0 +1,51 @@
+name: bo-lab-nextcloud-postgresql
+services:
+  database:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U nextcloud -d nextcloud]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+  nextcloud:
+    image: nextcloud:31-apache
+    restart: unless-stopped
+    depends_on:
+      database: {condition: service_healthy}
+      redis: {condition: service_started}
+    ports: ["127.0.0.1:${LAB_PORT:-18102}:80"]
+    environment:
+      POSTGRES_HOST: database
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      NEXTCLOUD_ADMIN_USER: orbit-admin
+      NEXTCLOUD_ADMIN_PASSWORD_FILE: /run/secrets/nextcloud_admin_password
+      NEXTCLOUD_TRUSTED_DOMAINS: localhost
+      REDIS_HOST: redis
+    secrets: [postgres_password, nextcloud_admin_password]
+    volumes:
+      - nextcloud-html:/var/www/html
+      - nextcloud-data:/var/www/html/data
+      - nextcloud-config:/var/www/html/config
+      - nextcloud-apps:/var/www/html/custom_apps
+secrets:
+  postgres_password: {file: ./secrets/postgres_password}
+  nextcloud_admin_password: {file: ./secrets/nextcloud_admin_password}
+volumes:
+  database-data:
+  nextcloud-html:
+  nextcloud-data:
+  nextcloud-config:
+  nextcloud-apps:

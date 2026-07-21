@@ -2,7 +2,11 @@
 // into an evidence-based protection blueprint. It never collects secret values.
 package projectanalyzer
 
-import "time"
+import (
+	"time"
+
+	"github.com/Cod3ioCH/Back-Orbit/internal/protectionblueprints"
+)
 
 const SchemaVersion = 1
 
@@ -59,6 +63,9 @@ type Blueprint struct {
 	Findings      []Finding  `json:"findings"`
 	Steps         []Step     `json:"steps"`
 	Warnings      []string   `json:"warnings"`
+	// TemplateMatches enrich evidence with versioned application knowledge.
+	// They remain advisory until the operator confirms the generated plan.
+	TemplateMatches []protectionblueprints.Result `json:"templateMatches"`
 }
 
 type ProjectDetector interface {

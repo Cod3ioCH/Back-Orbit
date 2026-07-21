@@ -10,6 +10,7 @@
 *.db-shm
 *.db-wal
 /data/
+/lab/runtime/
 
 # Frontend
 web/node_modules/

@@ -1,0 +1,12 @@
+name: bo-lab-node-red
+services:
+  node-red:
+    image: nodered/node-red:4
+    restart: unless-stopped
+    ports: ["127.0.0.1:${LAB_PORT:-18112}:1880"]
+    environment:
+      TZ: Europe/Zurich
+    volumes:
+      - node-red-data:/data
+volumes:
+  node-red-data:

@@ -36,6 +36,7 @@ export function ProtectionSummary({ projectId, onOpenBlueprint }: { projectId: s
   );
 
   const bp = query.data;
+  const template = bp.templateMatches?.[0];
   const databases = bp.findings.filter((finding) => finding.kind === "database");
   const storage = bp.findings.filter((finding) => finding.kind === "storage");
   const secrets = bp.findings.filter((finding) => finding.kind === "secret");
@@ -51,6 +52,7 @@ export function ProtectionSummary({ projectId, onOpenBlueprint }: { projectId: s
       </div>
     </CardHeader>
     <CardContent className="space-y-5 py-5">
+      {template && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/[0.035] p-3"><div><p className="text-sm font-medium">{template.name}</p><p className="text-xs text-muted-foreground">Known protection template · version {template.version}</p></div><Badge variant="outline" className="border-primary/30 text-primary">{template.score}% match</Badge></div>}
       <div>
         <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Detected data stores</p>
         {uniqueDatabases.length === 0 ? <p className="text-sm text-muted-foreground">No databases confidently identified.</p> : <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{uniqueDatabases.map((finding) => <Technology key={finding.id} finding={finding} />)}</div>}

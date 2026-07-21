@@ -21,20 +21,24 @@ import (
 	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
 	"github.com/Cod3ioCH/Back-Orbit/internal/events"
 	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
+	"github.com/Cod3ioCH/Back-Orbit/internal/protectionblueprints"
 )
 
 var ErrBlueprintNotFound = errors.New("project analyzer: blueprint not found")
 
 type Service struct {
-	db        *sql.DB
-	projects  *projects.Service
-	detectors []ProjectDetector
-	recorder  *events.Recorder
-	docker    docker.Client
+	db         *sql.DB
+	projects   *projects.Service
+	detectors  []ProjectDetector
+	recorder   *events.Recorder
+	docker     docker.Client
+	catalog    protectionblueprints.Catalog
+	catalogErr error
 }
 
 func NewService(db *sql.DB, projectService *projects.Service, dockerClient docker.Client, recorder *events.Recorder) *Service {
-	return &Service{db: db, projects: projectService, detectors: DefaultDetectors(), recorder: recorder, docker: dockerClient}
+	catalog, catalogErr := protectionblueprints.LoadBuiltin()
+	return &Service{db: db, projects: projectService, detectors: DefaultDetectors(), recorder: recorder, docker: dockerClient, catalog: catalog, catalogErr: catalogErr}
 }
 
 func (s *Service) Analyze(ctx context.Context, projectID, actorID string) (Blueprint, error) {
@@ -63,7 +67,23 @@ func (s *Service) Analyze(ctx context.Context, projectID, actorID string) (Bluep
 		findings = append(findings, detector.Detect(input)...)
 	}
 	sort.Slice(findings, func(i, j int) bool { return findings[i].ID < findings[j].ID })
-	fingerprint, err := fingerprintAnalysis(input, findings)
+	templateMatches := []protectionblueprints.Result{}
+	if s.catalogErr != nil {
+		input.Warnings = append(input.Warnings, "Built-in protection templates could not be loaded; application-specific recommendations are unavailable.")
+	} else {
+		images := make([]string, 0, len(input.Services))
+		technologies := make([]string, 0)
+		for _, service := range input.Services {
+			images = append(images, service.Image)
+		}
+		for _, finding := range findings {
+			if finding.Kind == "database" {
+				technologies = append(technologies, finding.Technology)
+			}
+		}
+		templateMatches = s.catalog.Match(protectionblueprints.Evidence{Images: images, Technologies: technologies})
+	}
+	fingerprint, err := fingerprintAnalysis(input, findings, templateMatches)
 	if err != nil {
 		return Blueprint{}, err
 	}
@@ -72,7 +92,7 @@ func (s *Service) Analyze(ctx context.Context, projectID, actorID string) (Bluep
 		return Blueprint{}, previousErr
 	}
 	now := time.Now().UTC()
-	bp := Blueprint{SchemaVersion: SchemaVersion, ProjectID: projectID, Fingerprint: fingerprint, AnalyzedAt: now, ConfirmedAt: confirmedAt, Drifted: confirmedFingerprint != "" && confirmedFingerprint != fingerprint, Findings: findings, Steps: plan(findings), Warnings: uniqueSorted(input.Warnings)}
+	bp := Blueprint{SchemaVersion: SchemaVersion, ProjectID: projectID, Fingerprint: fingerprint, AnalyzedAt: now, ConfirmedAt: confirmedAt, Drifted: confirmedFingerprint != "" && confirmedFingerprint != fingerprint, Findings: findings, Steps: plan(findings), Warnings: uniqueSorted(input.Warnings), TemplateMatches: templateMatches}
 	if err := s.save(ctx, bp, confirmedFingerprint, confirmedAt); err != nil {
 		return Blueprint{}, err
 	}
@@ -175,15 +195,16 @@ func fingerprint(findings []Finding) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func fingerprintAnalysis(input Input, findings []Finding) (string, error) {
+func fingerprintAnalysis(input Input, findings []Finding, matches []protectionblueprints.Result) (string, error) {
 	safe := struct {
-		Services []ServiceEvidence `json:"services"`
-		Secrets  []string          `json:"secrets"`
-		Configs  []string          `json:"configs"`
-		EnvFiles []string          `json:"envFiles"`
-		SQLite   []string          `json:"sqlite"`
-		Findings []Finding         `json:"findings"`
-	}{input.Services, input.Secrets, input.Configs, input.EnvFiles, input.SQLite, findings}
+		Services        []ServiceEvidence             `json:"services"`
+		Secrets         []string                      `json:"secrets"`
+		Configs         []string                      `json:"configs"`
+		EnvFiles        []string                      `json:"envFiles"`
+		SQLite          []string                      `json:"sqlite"`
+		Findings        []Finding                     `json:"findings"`
+		TemplateMatches []protectionblueprints.Result `json:"templateMatches"`
+	}{input.Services, input.Secrets, input.Configs, input.EnvFiles, input.SQLite, findings, matches}
 	raw, err := json.Marshal(safe)
 	if err != nil {
 		return "", fmt.Errorf("fingerprint analysis: %w", err)

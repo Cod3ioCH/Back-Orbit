@@ -1,0 +1,18 @@
+name: bo-lab-vaultwarden-sqlite
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    restart: unless-stopped
+    ports: ["127.0.0.1:${LAB_PORT:-18105}:80"]
+    environment:
+      SIGNUPS_ALLOWED: "true"
+      DOMAIN: http://localhost:${LAB_PORT:-18105}
+    volumes:
+      - vaultwarden-data:/data
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1/alive]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+volumes:
+  vaultwarden-data:

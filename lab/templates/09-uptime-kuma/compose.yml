@@ -1,0 +1,10 @@
+name: bo-lab-uptime-kuma
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    restart: unless-stopped
+    ports: ["127.0.0.1:${LAB_PORT:-18109}:3001"]
+    volumes:
+      - uptime-kuma-data:/app/data
+volumes:
+  uptime-kuma-data:

@@ -1,0 +1,27 @@
+schemaVersion: 1
+projects:
+  - {id: 01-wordpress-mariadb, blueprint: wordpress-mariadb, category: content, profile: standard, status: ready}
+  - {id: 02-nextcloud-postgresql, blueprint: nextcloud-postgresql, category: cloud, profile: complex, status: ready}
+  - {id: 03-paperless-ngx, blueprint: paperless-ngx, category: documents, profile: complex, status: planned}
+  - {id: 04-immich, blueprint: immich, category: media, profile: complex, status: planned}
+  - {id: 05-vaultwarden-sqlite, blueprint: vaultwarden-sqlite, category: security, profile: small, status: ready}
+  - {id: 06-vaultwarden-postgresql, blueprint: vaultwarden-postgresql, category: security, profile: standard, status: planned}
+  - {id: 07-gitea-postgresql, blueprint: gitea-postgresql, category: development, profile: standard, status: planned}
+  - {id: 08-forgejo-sqlite, blueprint: forgejo-sqlite, category: development, profile: small, status: planned}
+  - {id: 09-uptime-kuma, blueprint: uptime-kuma, category: monitoring, profile: small, status: ready}
+  - {id: 10-n8n-postgresql, blueprint: n8n-postgresql, category: automation, profile: standard, status: planned}
+  - {id: 11-home-assistant, blueprint: home-assistant, category: automation, profile: standard, status: planned}
+  - {id: 12-node-red, blueprint: node-red, category: automation, profile: small, status: ready}
+  - {id: 13-jellyfin, blueprint: jellyfin, category: media, profile: complex, status: planned}
+  - {id: 14-navidrome, blueprint: navidrome, category: media, profile: small, status: planned}
+  - {id: 15-audiobookshelf, blueprint: audiobookshelf, category: media, profile: standard, status: planned}
+  - {id: 16-ghost-mysql, blueprint: ghost-mysql, category: content, profile: standard, status: planned}
+  - {id: 17-bookstack-mariadb, blueprint: bookstack-mariadb, category: content, profile: standard, status: planned}
+  - {id: 18-vikunja-postgresql, blueprint: vikunja-postgresql, category: productivity, profile: standard, status: planned}
+  - {id: 19-grafana-observability, blueprint: grafana-observability, category: monitoring, profile: complex, status: planned}
+  - {id: 20-gotify-sqlite, blueprint: gotify-sqlite, category: notifications, profile: small, status: planned}
+  - {id: 21-ntfy-sqlite, blueprint: ntfy-sqlite, category: notifications, profile: small, status: planned}
+  - {id: 22-minio, blueprint: minio, category: infrastructure, profile: standard, status: planned}
+  - {id: 23-postgresql-pgadmin, blueprint: postgresql-pgadmin, category: infrastructure, profile: standard, status: planned}
+  - {id: 24-mongodb-express, blueprint: mongodb-express, category: infrastructure, profile: standard, status: planned}
+  - {id: 25-valkey-worker, blueprint: valkey-worker, category: infrastructure, profile: small, status: planned}
