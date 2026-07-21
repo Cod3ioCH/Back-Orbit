@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/back-orbit/back-orbit/internal/dbtest"
-	"github.com/back-orbit/back-orbit/internal/docker"
-	"github.com/back-orbit/back-orbit/internal/events"
+	"github.com/Cod3ioCH/Back-Orbit/internal/dbtest"
+	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
+	"github.com/Cod3ioCH/Back-Orbit/internal/events"
 )
 
 func newTestService(t *testing.T, dockerClient docker.Client) *Service {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/back-orbit/back-orbit/internal/auth"
-	"github.com/back-orbit/back-orbit/internal/events"
+	"github.com/Cod3ioCH/Back-Orbit/internal/auth"
+	"github.com/Cod3ioCH/Back-Orbit/internal/events"
 )
 
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {

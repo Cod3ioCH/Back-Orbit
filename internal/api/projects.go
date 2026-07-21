@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/back-orbit/back-orbit/internal/auth"
-	"github.com/back-orbit/back-orbit/internal/projects"
+	"github.com/Cod3ioCH/Back-Orbit/internal/auth"
+	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 )
 
 func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {

@@ -9,7 +9,7 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	"github.com/back-orbit/back-orbit/migrations"
+	"github.com/Cod3ioCH/Back-Orbit/migrations"
 )
 
 // connectionPragmas are applied to *every* connection the driver opens, via

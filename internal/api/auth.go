@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/back-orbit/back-orbit/internal/auth"
-	"github.com/back-orbit/back-orbit/internal/events"
+	"github.com/Cod3ioCH/Back-Orbit/internal/auth"
+	"github.com/Cod3ioCH/Back-Orbit/internal/events"
 )
 
 type loginRequest struct {

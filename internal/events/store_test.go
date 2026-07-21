@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/back-orbit/back-orbit/internal/dbtest"
+	"github.com/Cod3ioCH/Back-Orbit/internal/dbtest"
 )
 
 func TestStoreInsertAndListRecent(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/back-orbit/back-orbit/internal/dbtest"
+	"github.com/Cod3ioCH/Back-Orbit/internal/dbtest"
 )
 
 func TestSessionCreateAndValidate(t *testing.T) {

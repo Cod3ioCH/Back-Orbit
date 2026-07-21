@@ -11,11 +11,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/back-orbit/back-orbit/internal/auth"
-	"github.com/back-orbit/back-orbit/internal/config"
-	"github.com/back-orbit/back-orbit/internal/docker"
-	"github.com/back-orbit/back-orbit/internal/events"
-	"github.com/back-orbit/back-orbit/internal/projects"
+	"github.com/Cod3ioCH/Back-Orbit/internal/auth"
+	"github.com/Cod3ioCH/Back-Orbit/internal/config"
+	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
+	"github.com/Cod3ioCH/Back-Orbit/internal/events"
+	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 )
 
 // loginRateLimit configures the login brute-force protection: 5 failed

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/back-orbit/back-orbit/internal/database"
+	"github.com/Cod3ioCH/Back-Orbit/internal/database"
 )
 
 // Open creates a fresh, migrated SQLite database in a temporary directory

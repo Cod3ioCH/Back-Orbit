@@ -27,7 +27,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/back-orbit/back-orbit/internal/crypto"
+	"github.com/Cod3ioCH/Back-Orbit/internal/crypto"
 )
 
 // Kind classifies what a secret is for. Callers address secrets by kind and

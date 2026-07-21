@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/back-orbit/back-orbit/internal/auth"
-	"github.com/back-orbit/back-orbit/internal/config"
-	"github.com/back-orbit/back-orbit/internal/dbtest"
-	"github.com/back-orbit/back-orbit/internal/docker"
+	"github.com/Cod3ioCH/Back-Orbit/internal/auth"
+	"github.com/Cod3ioCH/Back-Orbit/internal/config"
+	"github.com/Cod3ioCH/Back-Orbit/internal/dbtest"
+	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
 )
 
 // testClient wraps httptest's server with a cookie jar (so session and CSRF

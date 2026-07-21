@@ -1,4 +1,4 @@
-module github.com/back-orbit/back-orbit
+module github.com/Cod3ioCH/Back-Orbit
 
 go 1.25.7
 

@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/back-orbit/back-orbit/internal/docker"
-	"github.com/back-orbit/back-orbit/internal/events"
+	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
+	"github.com/Cod3ioCH/Back-Orbit/internal/events"
 )
 
 // knownComposeFilenames are the filenames Back-Orbit recognizes as Compose

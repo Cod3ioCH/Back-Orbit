@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/back-orbit/back-orbit/internal/dbtest"
+	"github.com/Cod3ioCH/Back-Orbit/internal/dbtest"
 )
 
 const testPassphrase = "a-sufficiently-long-master-passphrase"
