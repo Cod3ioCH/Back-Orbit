@@ -355,9 +355,9 @@ func extractTar(r io.Reader, destDir string) (*Result, error) {
 		if err := os.Lchown(target, header.Uid, header.Gid); err != nil && result.OwnershipPreserved {
 			result.OwnershipPreserved = false
 			result.Warnings = append(result.Warnings,
-				"file ownership could not be preserved while staging, because Back-Orbit is not "+
-					"running as root; the original owners are recorded with the snapshot so a "+
-					"restore can reapply them")
+				"the staged copy uses Back-Orbit's UID/GID because the original file ownership "+
+					"cannot be applied by the unprivileged container; original UID/GID values are "+
+					"recorded in the snapshot manifest and must be reapplied during restore")
 		}
 	}
 

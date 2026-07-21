@@ -299,7 +299,7 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 		stagedPaths = append(stagedPaths, dest)
 		run.FilesTotal += int64(result.Files)
 		run.BytesTotal += result.Bytes
-		run.Warnings = append(run.Warnings, prefixWarnings(name, result.Warnings)...)
+		run.Warnings = append(run.Warnings, prefixWarnings(source, result.Warnings)...)
 
 		manifest.Volumes = append(manifest.Volumes, VolumeManifest{
 			Name:               name,
@@ -537,13 +537,17 @@ func pathSegment(name string) string {
 	return segment
 }
 
-func prefixWarnings(volume string, warnings []string) []string {
+func prefixWarnings(source projects.BackupSource, warnings []string) []string {
 	if len(warnings) == 0 {
 		return nil
 	}
 	prefixed := make([]string, 0, len(warnings))
+	label := "named volume"
+	if source.Kind == projects.SourceBind {
+		label = "bind mount"
+	}
 	for _, warning := range warnings {
-		prefixed = append(prefixed, fmt.Sprintf("volume %s: %s", volume, warning))
+		prefixed = append(prefixed, fmt.Sprintf("%s %s: %s", label, source.Name, warning))
 	}
 	return prefixed
 }
