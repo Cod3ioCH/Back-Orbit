@@ -65,6 +65,13 @@ func run() error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// Long-lived Server-Sent Event streams never complete on their own, and
+	// http.Server.Shutdown only waits for connections to go idle — without
+	// this, a single open browser tab would stall shutdown until the timeout
+	// below and make the process exit non-zero. RegisterOnShutdown lets the
+	// SSE handlers return as soon as graceful shutdown begins.
+	httpServer.RegisterOnShutdown(server.Shutdown)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -47,6 +48,13 @@ type Server struct {
 
 	staticFS fs.FS
 	db       *sql.DB
+
+	// shutdown is closed once (via Shutdown) to tell long-lived handlers —
+	// currently the SSE activity stream — to return, so the HTTP server's
+	// graceful Shutdown isn't blocked waiting on connections that never
+	// complete on their own.
+	shutdown     chan struct{}
+	shutdownOnce sync.Once
 }
 
 // NewServer wires up a Server from its dependencies. dockerClient may be
@@ -77,7 +85,15 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, static
 		recorder:     recorder,
 		staticFS:     staticFS,
 		db:           db,
+		shutdown:     make(chan struct{}),
 	}
+}
+
+// Shutdown signals long-lived handlers (the SSE activity stream) to stop.
+// It is safe to call more than once. Wire it into the HTTP server via
+// http.Server.RegisterOnShutdown so it fires as part of graceful shutdown.
+func (s *Server) Shutdown() {
+	s.shutdownOnce.Do(func() { close(s.shutdown) })
 }
 
 // Router builds the complete HTTP handler: middleware chain, API routes, and

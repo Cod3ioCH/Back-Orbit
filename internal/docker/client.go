@@ -10,7 +10,15 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
+
+// callTimeout bounds how long any single Docker API operation may take. The
+// caller's context still applies (a disconnecting browser cancels early);
+// this is an upper bound so an unresponsive daemon — a hung socket accepts
+// the connection but never answers — cannot pin an API request, and with it
+// a request goroutine, open indefinitely.
+const callTimeout = 15 * time.Second
 
 // sdkClient talks to the Docker Engine API directly over HTTP, without the
 // official (and dependency-heavy) Docker SDK: Back-Orbit only needs a
@@ -63,6 +71,9 @@ func (c *sdkClient) Close() error {
 }
 
 func (c *sdkClient) Status(ctx context.Context) Status {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/_ping", nil)
 	if err != nil {
 		return Status{Connected: false, Host: c.host, Error: err.Error()}
@@ -88,10 +99,16 @@ func (c *sdkClient) Status(ctx context.Context) Status {
 }
 
 func (c *sdkClient) ListComposeProjects(ctx context.Context) ([]ComposeProject, error) {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+
 	return c.composeProjects(ctx, LabelProject)
 }
 
 func (c *sdkClient) GetComposeProject(ctx context.Context, name string) (ComposeProject, error) {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+
 	projects, err := c.composeProjects(ctx, LabelProject+"="+name)
 	if err != nil {
 		return ComposeProject{}, err

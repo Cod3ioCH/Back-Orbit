@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { OrbitIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,9 +42,11 @@ export function SetupPage() {
     },
   });
 
+  // Redirect via <Navigate> rather than calling navigate() here: this runs
+  // during render, and triggering a router state update from inside render
+  // is a side effect React warns about.
   if (!isLoading && setupComplete) {
-    navigate("/login", { replace: true });
-    return null;
+    return <Navigate to="/login" replace />;
   }
 
   return (

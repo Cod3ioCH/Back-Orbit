@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -22,6 +23,7 @@ type testClient struct {
 	t       *testing.T
 	baseURL string
 	http    *http.Client
+	server  *Server
 }
 
 func newTestServer(t *testing.T) *testClient {
@@ -43,7 +45,7 @@ func newTestServer(t *testing.T) *testClient {
 		t.Fatalf("create cookie jar: %v", err)
 	}
 
-	return &testClient{t: t, baseURL: ts.URL, http: &http.Client{Jar: jar}}
+	return &testClient{t: t, baseURL: ts.URL, http: &http.Client{Jar: jar}, server: server}
 }
 
 func (c *testClient) csrfToken() string {
@@ -187,6 +189,51 @@ func TestLoginRejectsWrongPassword(t *testing.T) {
 		t.Fatalf("expected 401 for wrong password, got %d", resp.StatusCode)
 	}
 	resp.Body.Close()
+}
+
+// TestActivityStreamStopsOnShutdown guards the graceful-shutdown path: the
+// SSE handler never completes on its own, so without an explicit shutdown
+// signal http.Server.Shutdown would block until its timeout (and then report
+// a deadline error) whenever a browser had the activity feed open.
+func TestActivityStreamStopsOnShutdown(t *testing.T) {
+	client := newTestServer(t)
+	client.do(http.MethodGet, "/api/v1/setup/status", nil).Body.Close()
+	client.do(http.MethodPost, "/api/v1/setup/admin", map[string]string{
+		"username": "admin",
+		"password": "correct-horse-battery-staple",
+	}).Body.Close()
+
+	resp := client.do(http.MethodGet, "/api/v1/activity/stream", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 opening the activity stream, got %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+
+	streamEnded := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(io.Discard, resp.Body)
+		streamEnded <- err
+	}()
+
+	// The stream must still be open before shutdown is signalled.
+	select {
+	case <-streamEnded:
+		t.Fatal("activity stream closed before shutdown was signalled")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	client.server.Shutdown()
+
+	select {
+	case <-streamEnded:
+		// Handler returned promptly, so http.Server.Shutdown would not stall.
+	case <-time.After(5 * time.Second):
+		t.Fatal("activity stream did not close after shutdown was signalled")
+	}
+
+	// Shutdown must be safe to call more than once (http.Server may invoke
+	// the registered hook alongside an explicit call).
+	client.server.Shutdown()
 }
 
 func TestProjectsRequiresAuthentication(t *testing.T) {
