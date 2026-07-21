@@ -19,8 +19,10 @@ import (
 	"github.com/Cod3ioCH/Back-Orbit/internal/config"
 	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
 	"github.com/Cod3ioCH/Back-Orbit/internal/events"
+	"github.com/Cod3ioCH/Back-Orbit/internal/projectanalyzer"
 	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 	"github.com/Cod3ioCH/Back-Orbit/internal/repositories"
+	restorejobs "github.com/Cod3ioCH/Back-Orbit/internal/restore"
 	"github.com/Cod3ioCH/Back-Orbit/internal/secrets"
 	"github.com/Cod3ioCH/Back-Orbit/internal/storage"
 )
@@ -48,10 +50,12 @@ type Server struct {
 
 	dockerClient docker.Client
 	projects     *projects.Service
+	analyzer     *projectanalyzer.Service
 
 	secrets      *secrets.Store
 	repositories *repositories.Service
 	backups      *backuprun.Runner
+	restores     *restorejobs.Runner
 
 	eventStore  *events.Store
 	eventBroker *events.Broker
@@ -86,6 +90,7 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 	engine := backup.NewResticEngine("")
 
 	projectService := projects.NewService(db, dockerClient, recorder)
+	analyzerService := projectanalyzer.NewService(db, projectService, dockerClient, recorder)
 	repositoryService := repositories.NewService(db, secretStore, engine, recorder,
 		repositories.NewLocations(cfg.DataDir, cfg.BackupDir))
 
@@ -94,6 +99,10 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 	// never end up somewhere that looks like a backup.
 	stager := storage.NewStager(dockerClient, "")
 
+	// The runner reads the analyzer's blueprint so a backup can say which
+	// detected databases it captured as plain files rather than as a dump.
+	backupRunner := backuprun.NewRunner(db, projectService, repositoryService, stager, engine, recorder,
+		filepath.Join(cfg.DataDir, "staging"), analyzerService)
 	return &Server{
 		cfg: cfg,
 		auth: &auth.Authenticator{
@@ -106,10 +115,12 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 		rateLimiter:  auth.NewLoginRateLimiter(loginMaxAttempts, loginWindow, loginMaxBackoff),
 		dockerClient: dockerClient,
 		projects:     projectService,
+		analyzer:     analyzerService,
 		secrets:      secretStore,
 		repositories: repositoryService,
-		backups: backuprun.NewRunner(db, projectService, repositoryService, stager, engine, recorder,
-			filepath.Join(cfg.DataDir, "staging")),
+		backups:      backupRunner,
+		restores: restorejobs.NewRunner(db, backupRunner, repositoryService, engine, recorder,
+			filepath.Join(cfg.DataDir, "restores")),
 		eventStore:  eventStore,
 		eventBroker: eventBroker,
 		recorder:    recorder,
@@ -127,7 +138,12 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 // which is the most misleading thing this UI could say about a backup that
 // never finished.
 func (s *Server) CloseInterruptedRuns(ctx context.Context) (int64, error) {
-	return s.backups.CloseInterruptedRuns(ctx)
+	backups, err := s.backups.CloseInterruptedRuns(ctx)
+	if err != nil {
+		return 0, err
+	}
+	restores, err := s.restores.CloseInterruptedRuns(ctx)
+	return backups + restores, err
 }
 
 // Shutdown signals long-lived handlers (the SSE activity stream) to stop.
@@ -169,12 +185,23 @@ func (s *Server) Router() http.Handler {
 			r.Post("/projects", s.handleRegisterProject)
 			r.Post("/projects/scan", s.handleScanProjects)
 			r.Get("/projects/{id}", s.handleGetProject)
+			r.Delete("/projects/{id}", s.handleDeleteProject)
+			r.Get("/projects/{id}/blueprint", s.handleGetProjectBlueprint)
+			r.Post("/projects/{id}/analyze", s.handleAnalyzeProject)
+			r.Post("/projects/{id}/blueprint/confirm", s.handleConfirmProjectBlueprint)
 			r.Post("/projects/{id}/backup", s.handleStartBackup)
 
 			r.Route("/backups", func(r chi.Router) {
 				r.Get("/", s.handleListBackupRuns)
 				r.Get("/{id}", s.handleGetBackupRun)
 				r.Post("/{id}/cancel", s.handleCancelBackupRun)
+			})
+			r.Route("/restores", func(r chi.Router) {
+				r.Get("/", s.handleListRestoreRuns)
+				r.Post("/preview", s.handlePreviewRestore)
+				r.Post("/", s.handleStartRestore)
+				r.Get("/{id}", s.handleGetRestoreRun)
+				r.Post("/{id}/cancel", s.handleCancelRestoreRun)
 			})
 
 			r.Route("/secrets", func(r chi.Router) {

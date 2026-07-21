@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 )
 
 // TestStagingPathIsStableAcrossRuns is the property that keeps successive
@@ -90,5 +92,16 @@ func TestStatusDone(t *testing.T) {
 		if !status.Done() {
 			t.Errorf("%s should count as done", status)
 		}
+	}
+}
+
+func TestPrefixWarningsNamesTheSourceKind(t *testing.T) {
+	bind := prefixWarnings(projects.BackupSource{Kind: projects.SourceBind, Name: "/srv/app/data"}, []string{"ownership metadata requires restore handling"})
+	if len(bind) != 1 || !strings.HasPrefix(bind[0], "bind mount /srv/app/data:") {
+		t.Fatalf("unexpected bind warning: %#v", bind)
+	}
+	volume := prefixWarnings(projects.BackupSource{Kind: projects.SourceVolume, Name: "app-data"}, []string{"ownership metadata requires restore handling"})
+	if len(volume) != 1 || !strings.HasPrefix(volume[0], "named volume app-data:") {
+		t.Fatalf("unexpected volume warning: %#v", volume)
 	}
 }

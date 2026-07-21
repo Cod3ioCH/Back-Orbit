@@ -45,6 +45,35 @@ func TestRegisterAndList(t *testing.T) {
 	}
 }
 
+func TestRegisterDetectsComposeOverrides(t *testing.T) {
+	svc := newTestService(t, nil)
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "compose.yml"), "services: {}")
+	writeFile(t, filepath.Join(dir, "compose.production.yaml"), "services: {}")
+	record, err := svc.Register(context.Background(), "actor-1", "overrides", dir)
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if len(record.ComposeFiles) != 2 {
+		t.Fatalf("expected base and override Compose files, got %#v", record.ComposeFiles)
+	}
+}
+
+func TestRemoveOnlyDeletesProjectRegistration(t *testing.T) {
+	svc := newTestService(t, nil)
+	ctx := context.Background()
+	record, err := svc.Register(ctx, "", "remove-me", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Remove(ctx, "", record.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Get(ctx, record.ID); err != ErrProjectNotFound {
+		t.Fatalf("expected project to be removed, got %v", err)
+	}
+}
+
 func TestRegisterRejectsRelativePath(t *testing.T) {
 	svc := newTestService(t, nil)
 

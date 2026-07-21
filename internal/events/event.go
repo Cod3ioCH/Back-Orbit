@@ -19,10 +19,12 @@ const (
 	ActionLoginFailed         Action = "auth.login_failed"
 	ActionLogout              Action = "auth.logout"
 
-	ActionProjectRegistered Action = "project.registered"
-	ActionProjectUpdated    Action = "project.updated"
-	ActionProjectRemoved    Action = "project.removed"
-	ActionProjectScanned    Action = "project.scanned"
+	ActionProjectRegistered         Action = "project.registered"
+	ActionProjectUpdated            Action = "project.updated"
+	ActionProjectRemoved            Action = "project.removed"
+	ActionProjectScanned            Action = "project.scanned"
+	ActionProjectAnalyzed           Action = "project.analyzed"
+	ActionProjectBlueprintConfirmed Action = "project.blueprint_confirmed"
 
 	// Secret store transitions are security-relevant in themselves: an unlock
 	// is the moment every stored credential becomes readable, so when it
@@ -36,10 +38,14 @@ const (
 	ActionRepositoryInitialized Action = "repository.initialized"
 	ActionRepositoryChecked     Action = "repository.checked"
 
-	ActionBackupStarted   Action = "backup.started"
-	ActionBackupCompleted Action = "backup.completed"
-	ActionBackupFailed    Action = "backup.failed"
-	ActionBackupCancelled Action = "backup.cancelled"
+	ActionBackupStarted    Action = "backup.started"
+	ActionBackupCompleted  Action = "backup.completed"
+	ActionBackupFailed     Action = "backup.failed"
+	ActionBackupCancelled  Action = "backup.cancelled"
+	ActionRestoreStarted   Action = "restore.started"
+	ActionRestoreCompleted Action = "restore.completed"
+	ActionRestoreFailed    Action = "restore.failed"
+	ActionRestoreCancelled Action = "restore.cancelled"
 )
 
 // Event is a single audit/activity record.

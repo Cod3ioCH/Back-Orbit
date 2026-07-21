@@ -152,6 +152,38 @@ export interface ProjectDetail extends ProjectRecord {
   sources: BackupSource[];
 }
 
+export type AnalyzerConfidence = "confirmed" | "probable" | "possible";
+
+export interface BlueprintEvidence {
+  source: string;
+  subject: string;
+  detail: string;
+}
+
+export interface BlueprintFinding {
+  id: string;
+  kind: "database" | "storage" | "secret" | "configuration" | string;
+  technology: string;
+  service?: string;
+  confidence: AnalyzerConfidence;
+  evidence: BlueprintEvidence[];
+  recommendation: string;
+  consistency: "crash-consistent" | "filesystem-consistent" | "application-consistent" | string;
+  warnings?: string[];
+}
+
+export interface ProtectionBlueprint {
+  schemaVersion: number;
+  projectId: string;
+  fingerprint: string;
+  analyzedAt: string;
+  confirmedAt?: string;
+  drifted: boolean;
+  findings: BlueprintFinding[];
+  steps: { order: number; action: string; description: string }[];
+  warnings: string[];
+}
+
 export interface AuditEvent {
   id: string;
   action: string;
@@ -302,6 +334,12 @@ export interface BackupRun {
   snapshot?: BackupSnapshot;
 }
 
+export type RestoreMode = "extract" | "in_place" | "clone";
+export interface RestoreIssue { code: string; message: string }
+export interface RestoreItem { kind: string; name: string; sourcePath: string; intendedTarget: string; files: number; bytes: number }
+export interface RestorePreview { snapshotId: string; projectName: string; mode: RestoreMode; supported: boolean; destructive: boolean; estimatedBytes: number; files: number; items: RestoreItem[]; warnings: RestoreIssue[]; blockers: RestoreIssue[] }
+export interface RestoreRun { id: string; snapshotId: string; projectName: string; mode: RestoreMode; status: "running"|"completed"|"failed"|"cancelled"; targetPath?: string; filesRestored: number; bytesRestored: number; warnings: string[]; error?: string; startedAt: string; endedAt?: string; createdAt: string }
+
 export interface RepositoryCheckResult {
   status: RepositoryStatus;
   snapshotCount: number;
@@ -328,11 +366,18 @@ export const api = {
 
   listProjects: () => request<ProjectRecord[]>("/api/v1/projects"),
   getProject: (id: string) => request<ProjectDetail>(`/api/v1/projects/${id}`),
+  getProjectBlueprint: (id: string) =>
+    request<ProtectionBlueprint>(`/api/v1/projects/${id}/blueprint`),
+  analyzeProject: (id: string) =>
+    request<ProtectionBlueprint>(`/api/v1/projects/${id}/analyze`, { method: "POST" }),
+  confirmProjectBlueprint: (id: string) =>
+    request<ProtectionBlueprint>(`/api/v1/projects/${id}/blueprint/confirm`, { method: "POST" }),
   registerProject: (name: string, path: string) =>
     request<ProjectRecord>("/api/v1/projects", {
       method: "POST",
       body: JSON.stringify({ name, path }),
     }),
+  removeProject: (id: string) => request<void>(`/api/v1/projects/${id}`, { method: "DELETE" }),
   scanProjects: () =>
     request<{ projects: ProjectRecord[]; warning?: string }>(
       "/api/v1/projects/scan",
@@ -364,6 +409,14 @@ export const api = {
   getBackupRun: (id: string) => request<BackupRun>(`/api/v1/backups/${id}`),
   cancelBackupRun: (id: string) =>
     request<void>(`/api/v1/backups/${id}/cancel`, { method: "POST" }),
+
+  previewRestore: (snapshotId: string, mode: RestoreMode, newProjectName?: string) =>
+    request<RestorePreview>("/api/v1/restores/preview", { method: "POST", body: JSON.stringify({ snapshotId, mode, newProjectName }) }),
+  startRestore: (snapshotId: string, mode: RestoreMode, newProjectName?: string) =>
+    request<RestoreRun>("/api/v1/restores", { method: "POST", body: JSON.stringify({ snapshotId, mode, newProjectName }) }),
+  listRestoreRuns: (limit = 25) => request<RestoreRun[]>(`/api/v1/restores?limit=${limit}`),
+  getRestoreRun: (id: string) => request<RestoreRun>(`/api/v1/restores/${id}`),
+  cancelRestore: (id: string) => request<void>(`/api/v1/restores/${id}/cancel`, { method: "POST" }),
 
   listRepositories: () => request<Repository[]>("/api/v1/repositories"),
   repositoryLocations: () =>

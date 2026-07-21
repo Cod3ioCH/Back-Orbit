@@ -36,6 +36,9 @@ type Runner struct {
 	engine     backup.BackupEngine
 	recorder   *events.Recorder
 	stagingDir string
+	// blueprints is optional. Without it a backup still runs; it simply cannot
+	// say which detected databases it captured as plain files.
+	blueprints BlueprintSource
 
 	// mu guards active. A run is cancellable only while this process is the
 	// one running it, which is why cancellation lives in memory and
@@ -58,6 +61,7 @@ func NewRunner(
 	engine backup.BackupEngine,
 	recorder *events.Recorder,
 	stagingDir string,
+	blueprints BlueprintSource,
 ) *Runner {
 	return &Runner{
 		store:      newStore(db),
@@ -67,6 +71,7 @@ func NewRunner(
 		engine:     engine,
 		recorder:   recorder,
 		stagingDir: stagingDir,
+		blueprints: blueprints,
 		active:     map[string]context.CancelFunc{},
 		byProject:  map[string]string{},
 	}
@@ -170,7 +175,7 @@ func (r *Runner) Start(ctx context.Context, req StartRequest) (Run, error) {
 		TargetType:  "backup_run",
 		TargetID:    run.ID,
 		Metadata: map[string]any{
-			"project": project.Name, "repository": repository.Name, "volumes": len(volumes),
+			"project": project.Name, "projectId": project.ID, "repository": repository.Name, "volumes": len(volumes),
 		},
 	})
 
@@ -203,6 +208,11 @@ func (r *Runner) Get(ctx context.Context, id string) (Run, error) {
 // List returns recent runs, newest first.
 func (r *Runner) List(ctx context.Context, limit int) ([]Run, error) {
 	return r.store.listRuns(ctx, limit)
+}
+
+// GetSnapshot returns a verified snapshot by its stable Back-Orbit ID.
+func (r *Runner) GetSnapshot(ctx context.Context, id string) (*Snapshot, error) {
+	return r.store.snapshotByID(ctx, id)
 }
 
 // CloseInterruptedRuns fails any run left marked running by a previous
@@ -299,7 +309,7 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 		stagedPaths = append(stagedPaths, dest)
 		run.FilesTotal += int64(result.Files)
 		run.BytesTotal += result.Bytes
-		run.Warnings = append(run.Warnings, prefixWarnings(name, result.Warnings)...)
+		run.Warnings = append(run.Warnings, prefixWarnings(source, result.Warnings)...)
 
 		manifest.Volumes = append(manifest.Volumes, VolumeManifest{
 			Name:               name,
@@ -315,6 +325,12 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 		})
 		r.persist(ctx, &run)
 	}
+
+	// What the analyzer found, held against what staging actually did. A
+	// database captured as files rather than dumped is the difference between
+	// a snapshot that restores and one that only looks like it will.
+	run.Warnings = append(run.Warnings,
+		databaseConsistencyWarnings(ctx, r.blueprints, run.ProjectID)...)
 
 	// --- Snapshot --------------------------------------------------------
 	run.Phase = PhaseSnapshotting
@@ -430,11 +446,12 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 		TargetType:  "backup_run",
 		TargetID:    run.ID,
 		Metadata: map[string]any{
-			"project":  run.ProjectName,
-			"snapshot": snapshotResult.SnapshotID,
-			"files":    run.FilesTotal,
-			"warnings": len(run.Warnings),
-			"verified": true,
+			"project":   run.ProjectName,
+			"projectId": run.ProjectID,
+			"snapshot":  snapshotResult.SnapshotID,
+			"files":     run.FilesTotal,
+			"warnings":  len(run.Warnings),
+			"verified":  true,
 		},
 	})
 }
@@ -469,7 +486,7 @@ func (r *Runner) finishFailed(ctx context.Context, run *Run, err error, actorUse
 		ActorUserID: actorUserID,
 		TargetType:  "backup_run",
 		TargetID:    run.ID,
-		Metadata:    map[string]any{"project": run.ProjectName, "error": run.Error},
+		Metadata:    map[string]any{"project": run.ProjectName, "projectId": run.ProjectID, "error": run.Error},
 	})
 }
 
@@ -486,7 +503,7 @@ func (r *Runner) finishCancelled(ctx context.Context, run *Run, actorUserID stri
 		ActorUserID: actorUserID,
 		TargetType:  "backup_run",
 		TargetID:    run.ID,
-		Metadata:    map[string]any{"project": run.ProjectName},
+		Metadata:    map[string]any{"project": run.ProjectName, "projectId": run.ProjectID},
 	})
 }
 
@@ -537,13 +554,17 @@ func pathSegment(name string) string {
 	return segment
 }
 
-func prefixWarnings(volume string, warnings []string) []string {
+func prefixWarnings(source projects.BackupSource, warnings []string) []string {
 	if len(warnings) == 0 {
 		return nil
 	}
 	prefixed := make([]string, 0, len(warnings))
+	label := "named volume"
+	if source.Kind == projects.SourceBind {
+		label = "bind mount"
+	}
 	for _, warning := range warnings {
-		prefixed = append(prefixed, fmt.Sprintf("volume %s: %s", volume, warning))
+		prefixed = append(prefixed, fmt.Sprintf("%s %s: %s", label, source.Name, warning))
 	}
 	return prefixed
 }

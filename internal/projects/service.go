@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -131,6 +132,22 @@ func (s *Service) Register(ctx context.Context, actorUserID, name, path string) 
 	return record, nil
 }
 
+// Remove forgets a project without touching Docker resources, source files,
+// repository data, backup runs, or snapshots.
+func (s *Service) Remove(ctx context.Context, actorUserID, id string) error {
+	record, err := s.store.getByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.recorder.Record(ctx, events.Event{Action: events.ActionProjectRemoved, ActorUserID: actorUserID, TargetType: "project", TargetID: id, Metadata: map[string]any{"name": record.Name, "effect": "registry-only"}}); err != nil {
+		return fmt.Errorf("audit project removal: %w", err)
+	}
+	if err := s.store.delete(ctx, id); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *Service) attachDockerState(ctx context.Context, record Record) Detail {
 	detail := Detail{
 		Record:     record,
@@ -203,6 +220,22 @@ func detectComposeFiles(dir string) []string {
 			files = append(files, name)
 		}
 	}
+	for name := range found {
+		lower := strings.ToLower(name)
+		if (strings.HasPrefix(lower, "compose.") || strings.HasPrefix(lower, "docker-compose.")) &&
+			(strings.HasSuffix(lower, ".yml") || strings.HasSuffix(lower, ".yaml")) {
+			files = appendUniqueString(files, name)
+		}
+	}
 	sort.Strings(files)
 	return files
+}
+
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }

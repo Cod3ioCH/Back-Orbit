@@ -44,10 +44,11 @@ func (s BackupSource) Backupable() bool { return s.Skipped == "" }
 // Backing them up would capture the host's own system state, which is not what
 // anyone asked for and in the socket's case is a security problem.
 var unbackupablePaths = map[string]string{
-	"/var/run/docker.sock": "this is the Docker socket, not application data",
-	"/run/docker.sock":     "this is the Docker socket, not application data",
-	"/etc/localtime":       "this is a host system file, not application data",
-	"/etc/timezone":        "this is a host system file, not application data",
+	"/var/run/docker.sock":                 "this is the Docker socket, not application data",
+	"/run/docker.sock":                     "this is the Docker socket, not application data",
+	"/run/host-services/docker.proxy.sock": "this is Docker Desktop's internal Docker socket, not application data",
+	"/etc/localtime":                       "this is a host system file, not application data",
+	"/etc/timezone":                        "this is a host system file, not application data",
 }
 
 // BackupSources returns everything in a project that holds data, from its live
@@ -91,7 +92,7 @@ func BackupSources(detail Detail) []BackupSource {
 					source = &BackupSource{
 						Kind:    SourceBind,
 						Name:    mount.Source,
-						Skipped: skipReason(mount.Source),
+						Skipped: skipReason(mount.Source, mount.Destination),
 					}
 					byName[mount.Source] = source
 				}
@@ -117,8 +118,12 @@ func BackupSources(detail Detail) []BackupSource {
 	return sources
 }
 
-func skipReason(hostPath string) string {
+func skipReason(hostPath, containerPath string) string {
 	clean := path.Clean(hostPath)
+	destination := path.Clean(containerPath)
+	if destination == "/var/run/docker.sock" || destination == "/run/docker.sock" {
+		return "this is the Docker socket, not application data"
+	}
 	if clean == "/" {
 		return "this is the host's root directory"
 	}

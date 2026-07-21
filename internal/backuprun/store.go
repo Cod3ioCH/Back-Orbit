@@ -150,11 +150,20 @@ func (s *store) listRuns(ctx context.Context, limit int) ([]Run, error) {
 }
 
 func (s *store) snapshotForRun(ctx context.Context, runID string) (*Snapshot, error) {
-	row := s.db.QueryRowContext(ctx, `
+	return scanSnapshot(s.db.QueryRowContext(ctx, `
 		SELECT id, run_id, repository_id, restic_snapshot_id, manifest_json,
 		       size_bytes, files_count, verified_at, verification_json, created_at
-		FROM snapshots WHERE run_id = ?`, runID)
+		FROM snapshots WHERE run_id = ?`, runID))
+}
 
+func (s *store) snapshotByID(ctx context.Context, id string) (*Snapshot, error) {
+	return scanSnapshot(s.db.QueryRowContext(ctx, `
+		SELECT id, run_id, repository_id, restic_snapshot_id, manifest_json,
+		       size_bytes, files_count, verified_at, verification_json, created_at
+		FROM snapshots WHERE id = ?`, id))
+}
+
+func scanSnapshot(row scanner) (*Snapshot, error) {
 	var (
 		snapshot                       Snapshot
 		repositoryID                   sql.NullString
