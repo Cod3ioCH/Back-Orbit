@@ -1,0 +1,10 @@
+name: bo-lab-home-assistant
+services:
+  home-assistant:
+    image: ghcr.io/home-assistant/home-assistant:2026.5.4
+    restart: unless-stopped
+    ports: ["127.0.0.1:${LAB_PORT:-18111}:8123"]
+    environment:
+      TZ: Europe/Zurich
+    volumes:
+      - ./config:/config

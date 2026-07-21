@@ -74,6 +74,17 @@ case "$scenario" in
   07-gitea-postgresql)
     generate_secret postgres_password
     ;;
+  10-n8n-postgresql)
+    generate_secret postgres_password
+    generate_secret n8n_encryption_key
+    postgres_password=$(tr -d '\n' < "$target_dir/secrets/postgres_password")
+    encryption_key=$(tr -d '\n' < "$target_dir/secrets/n8n_encryption_key")
+    umask 077
+    {
+      echo "POSTGRES_PASSWORD=$postgres_password"
+      echo "N8N_ENCRYPTION_KEY=$encryption_key"
+    } > "$target_dir/.env"
+    ;;
 esac
 
 echo "$target_dir"

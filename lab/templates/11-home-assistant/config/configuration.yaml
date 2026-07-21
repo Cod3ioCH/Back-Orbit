@@ -1,0 +1,6 @@
+default_config:
+
+homeassistant:
+  name: Back-Orbit Lab
+  unit_system: metric
+  time_zone: Europe/Zurich

@@ -1,0 +1,16 @@
+name: bo-lab-audiobookshelf
+services:
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:2.35.0
+    restart: unless-stopped
+    ports: ["127.0.0.1:${LAB_PORT:-18115}:80"]
+    environment:
+      TZ: Europe/Zurich
+    volumes:
+      - audiobookshelf-config:/config
+      - audiobookshelf-metadata:/metadata
+      - ./audiobooks:/audiobooks:ro
+      - ./podcasts:/podcasts:ro
+volumes:
+  audiobookshelf-config:
+  audiobookshelf-metadata:

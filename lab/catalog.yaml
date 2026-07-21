@@ -9,12 +9,12 @@ projects:
   - {id: 07-gitea-postgresql, blueprint: gitea-postgresql, category: development, profile: standard, status: ready}
   - {id: 08-forgejo-sqlite, blueprint: forgejo-sqlite, category: development, profile: small, status: ready}
   - {id: 09-uptime-kuma, blueprint: uptime-kuma, category: monitoring, profile: small, status: ready}
-  - {id: 10-n8n-postgresql, blueprint: n8n-postgresql, category: automation, profile: standard, status: planned}
-  - {id: 11-home-assistant, blueprint: home-assistant, category: automation, profile: standard, status: planned}
+  - {id: 10-n8n-postgresql, blueprint: n8n-postgresql, category: automation, profile: standard, status: ready}
+  - {id: 11-home-assistant, blueprint: home-assistant, category: automation, profile: standard, status: ready}
   - {id: 12-node-red, blueprint: node-red, category: automation, profile: small, status: ready}
-  - {id: 13-jellyfin, blueprint: jellyfin, category: media, profile: complex, status: planned}
-  - {id: 14-navidrome, blueprint: navidrome, category: media, profile: small, status: planned}
-  - {id: 15-audiobookshelf, blueprint: audiobookshelf, category: media, profile: standard, status: planned}
+  - {id: 13-jellyfin, blueprint: jellyfin, category: media, profile: complex, status: ready}
+  - {id: 14-navidrome, blueprint: navidrome, category: media, profile: small, status: ready}
+  - {id: 15-audiobookshelf, blueprint: audiobookshelf, category: media, profile: standard, status: ready}
   - {id: 16-ghost-mysql, blueprint: ghost-mysql, category: content, profile: standard, status: planned}
   - {id: 17-bookstack-mariadb, blueprint: bookstack-mariadb, category: content, profile: standard, status: planned}
   - {id: 18-vikunja-postgresql, blueprint: vikunja-postgresql, category: productivity, profile: standard, status: planned}

@@ -1,0 +1,13 @@
+name: bo-lab-jellyfin
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.11.11
+    restart: unless-stopped
+    ports: ["127.0.0.1:${LAB_PORT:-18113}:8096"]
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      - ./media:/media:ro
+volumes:
+  jellyfin-config:
+  jellyfin-cache:

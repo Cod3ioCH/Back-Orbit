@@ -1,0 +1,16 @@
+name: bo-lab-navidrome
+services:
+  navidrome:
+    image: deluan/navidrome:0.61.2
+    restart: unless-stopped
+    user: "1000:1000"
+    ports: ["127.0.0.1:${LAB_PORT:-18114}:4533"]
+    environment:
+      ND_LOGLEVEL: info
+      ND_SCANSCHEDULE: 1h
+      ND_ENABLEINSIGHTSCOLLECTOR: "false"
+    volumes:
+      - navidrome-data:/data
+      - ./music:/music:ro
+volumes:
+  navidrome-data:
