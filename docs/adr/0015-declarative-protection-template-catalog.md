@@ -22,6 +22,27 @@ must match; optional evidence only improves the displayed score. Match results
 include the evidence, missing optional components, template version, advisory
 plan, and restore checks.
 
+Image patterns are compared against the *repository path* — registry host, tag
+and digest removed — on whole path segments, anchored at the end. Substring
+matching was wrong in both directions: `mongo` claimed the `mongo-express`
+container, which left the database role unfilled and the template unmatched,
+and any product name appearing in a registry host would have matched
+everything published under it.
+
+Required roles are filled as an assignment, not first-come-first-served: each
+role takes a distinct image, and a role that could be filled by two images does
+not strand a later role by taking the wrong one. The order containers come back
+from Docker is not something the matcher gets to choose, so it must not change
+the answer.
+
+The displayed score measures how much of the topology a template describes was
+actually found. Required evidence is a precondition rather than a variable —
+every eligible match carries all of it — so what the number varies with is the
+optional components. A project that has everything the template describes
+scores 100. Alternative implementations of one component ("redis or valkey")
+are declared as a group for the same reason required roles are: a complete
+project must not be reported as a half match.
+
 Templates contain no executable commands and cannot activate a job. The actual
 Compose project remains the source of truth, and an operator must review and
 confirm the generated project blueprint. Template identity and version are part

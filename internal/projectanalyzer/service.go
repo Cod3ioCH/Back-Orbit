@@ -59,6 +59,19 @@ func (s *Service) Analyze(ctx context.Context, projectID, actorID string) (Bluep
 		input.Warnings = append(input.Warnings, fmt.Sprintf("%d SQLite backup or archive copies were detected and excluded from active databases.", len(sqliteArtifacts)))
 	}
 
+	// Services are collected out of a Compose document's service map, whose
+	// iteration order Go deliberately randomises. Left unsorted they reach the
+	// fingerprint in a different order every run, so a project nobody touched
+	// reports itself as drifted — and a drift signal that fires at random
+	// teaches people to click past it. Sorting also makes template matching
+	// reproducible, since it decides which image fills which role.
+	sort.Slice(input.Services, func(i, j int) bool {
+		if input.Services[i].Name == input.Services[j].Name {
+			return input.Services[i].Image < input.Services[j].Image
+		}
+		return input.Services[i].Name < input.Services[j].Name
+	})
+
 	findings := []Finding{}
 	for _, detector := range s.detectors {
 		if err := ctx.Err(); err != nil {

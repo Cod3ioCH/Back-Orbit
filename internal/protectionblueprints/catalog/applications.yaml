@@ -8,27 +8,27 @@ templates:
   - apiVersion: back-orbit.io/v1alpha1
     kind: ProtectionTemplate
     metadata: {id: nextcloud-postgresql, name: Nextcloud with PostgreSQL and Redis, version: 1.0.0, category: cloud, upstream: https://nextcloud.com/, tags: [files, collaboration]}
-    match: {requiredImageGroups: [[nextcloud], [postgres]], optionalImages: [redis, valkey], requiredTechnologies: [postgresql], optionalTechnologies: [redis]}
+    match: {requiredImageGroups: [[nextcloud], [postgres]], optionalImageGroups: [[redis, valkey/valkey]], requiredTechnologies: [postgresql]}
     plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [Nextcloud config, apps and user data, PostgreSQL logical dump], databaseStrategy: [pg_dump], includeHints: [/var/www/html/config, /var/www/html/custom_apps, /var/www/html/data], warnings: [Maintenance mode is recommended around the coordinated capture.], restoreChecks: [occ status succeeds, HTTP responds]}
   - apiVersion: back-orbit.io/v1alpha1
     kind: ProtectionTemplate
     metadata: {id: paperless-ngx, name: Paperless-ngx, version: 1.0.0, category: documents, upstream: https://docs.paperless-ngx.com/, tags: [documents, python]}
-    match: {requiredImageGroups: [[paperless-ngx], [postgres]], optionalImages: [redis], requiredTechnologies: [postgresql]}
+    match: {requiredImageGroups: [[paperless-ngx], [postgres]], optionalImageGroups: [[redis, valkey/valkey]], requiredTechnologies: [postgresql]}
     plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [data, media, consume and export directories, PostgreSQL logical dump], databaseStrategy: [pg_dump], includeHints: [/usr/src/paperless/data, /usr/src/paperless/media, /usr/src/paperless/export], restoreChecks: [web health succeeds, seeded document is searchable]}
   - apiVersion: back-orbit.io/v1alpha1
     kind: ProtectionTemplate
     metadata: {id: immich, name: Immich, version: 1.0.0, category: media, upstream: https://immich.app/, tags: [photos, nodejs]}
-    match: {requiredImageGroups: [[immich-server], [postgres]], optionalImages: [redis, valkey, immich-machine-learning], requiredTechnologies: [postgresql]}
+    match: {requiredImageGroups: [[immich-server], [postgres]], optionalImageGroups: [[redis, valkey/valkey], [immich-machine-learning]], requiredTechnologies: [postgresql]}
     plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [upload library, PostgreSQL logical dump], databaseStrategy: [pg_dump], includeHints: [/usr/src/app/upload], warnings: [Database extensions and image digest must be preserved for compatible restore.], restoreChecks: [server health succeeds, seeded asset is visible]}
   - apiVersion: back-orbit.io/v1alpha1
     kind: ProtectionTemplate
     metadata: {id: vaultwarden-sqlite, name: Vaultwarden with SQLite, version: 1.0.0, category: security, upstream: https://github.com/dani-garcia/vaultwarden, tags: [passwords, rust]}
-    match: {requiredImageGroups: [[vaultwarden]], requiredTechnologies: [sqlite]}
+    match: {requiredImageGroups: [[vaultwarden/server]], requiredTechnologies: [sqlite]}
     plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [SQLite online backup, attachments, sends and RSA keys], databaseStrategy: [sqlite-online-backup], includeHints: [/data], warnings: [The complete data directory and encryption-related configuration are required together.], restoreChecks: [health endpoint succeeds, test vault can be unlocked]}
   - apiVersion: back-orbit.io/v1alpha1
     kind: ProtectionTemplate
     metadata: {id: vaultwarden-postgresql, name: Vaultwarden with PostgreSQL, version: 1.0.0, category: security, upstream: https://github.com/dani-garcia/vaultwarden, tags: [passwords, rust]}
-    match: {requiredImageGroups: [[vaultwarden], [postgres]], requiredTechnologies: [postgresql]}
+    match: {requiredImageGroups: [[vaultwarden/server], [postgres]], requiredTechnologies: [postgresql]}
     plan: {classification: stateful-mixed, consistency: application-consistent, requiredData: [PostgreSQL logical dump, attachments, sends and RSA keys], databaseStrategy: [pg_dump], includeHints: [/data], restoreChecks: [health endpoint succeeds, test vault can be unlocked]}
   - apiVersion: back-orbit.io/v1alpha1
     kind: ProtectionTemplate
@@ -98,7 +98,7 @@ templates:
   - apiVersion: back-orbit.io/v1alpha1
     kind: ProtectionTemplate
     metadata: {id: gotify-sqlite, name: Gotify with SQLite, version: 1.0.0, category: notifications, upstream: https://gotify.net/, tags: [go, notifications]}
-    match: {requiredImageGroups: [[gotify]], requiredTechnologies: [sqlite]}
+    match: {requiredImageGroups: [[gotify/server]], requiredTechnologies: [sqlite]}
     plan: {classification: stateful-filesystem, consistency: application-consistent, requiredData: [SQLite online backup and application data], databaseStrategy: [sqlite-online-backup], includeHints: [/app/data], restoreChecks: [health endpoint succeeds, seeded application exists]}
   - apiVersion: back-orbit.io/v1alpha1
     kind: ProtectionTemplate
@@ -113,7 +113,7 @@ templates:
   - apiVersion: back-orbit.io/v1alpha1
     kind: ProtectionTemplate
     metadata: {id: postgresql-pgadmin, name: PostgreSQL with pgAdmin, version: 1.0.0, category: infrastructure, upstream: https://www.postgresql.org/, tags: [database, admin]}
-    match: {requiredImageGroups: [[postgres], [pgadmin]], requiredTechnologies: [postgresql]}
+    match: {requiredImageGroups: [[postgres], [dpage/pgadmin4, pgadmin4]], requiredTechnologies: [postgresql]}
     plan: {classification: stateful-database, consistency: application-consistent, requiredData: [PostgreSQL logical dump, pgAdmin configuration], databaseStrategy: [pg_dump], includeHints: [/var/lib/pgadmin], restoreChecks: [database accepts queries, seeded rows match]}
   - apiVersion: back-orbit.io/v1alpha1
     kind: ProtectionTemplate

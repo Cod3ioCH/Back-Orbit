@@ -47,9 +47,14 @@ type Metadata struct {
 
 // Match contains evidence rules. Every RequiredImageGroups entry represents
 // one service role and must match at least one image pattern in that group.
+//
+// Optional images are grouped for the same reason as required ones: "redis or
+// valkey" is one cache component with two implementations, not two components
+// of which one is always missing. A flat list would make a complete project
+// look incomplete.
 type Match struct {
 	RequiredImageGroups  [][]string `yaml:"requiredImageGroups" json:"requiredImageGroups"`
-	OptionalImages       []string   `yaml:"optionalImages" json:"optionalImages"`
+	OptionalImageGroups  [][]string `yaml:"optionalImageGroups" json:"optionalImageGroups"`
 	RequiredTechnologies []string   `yaml:"requiredTechnologies" json:"requiredTechnologies"`
 	OptionalTechnologies []string   `yaml:"optionalTechnologies" json:"optionalTechnologies"`
 }
@@ -125,17 +130,33 @@ func validate(template Template) error {
 	if len(template.Match.RequiredImageGroups) == 0 {
 		return fmt.Errorf("template %q has no required image evidence", template.Metadata.ID)
 	}
-	for _, group := range template.Match.RequiredImageGroups {
+	groups := append(append([][]string{}, template.Match.RequiredImageGroups...),
+		template.Match.OptionalImageGroups...)
+	for _, group := range groups {
 		if len(group) == 0 {
-			return fmt.Errorf("template %q has an empty required image group", template.Metadata.ID)
+			return fmt.Errorf("template %q has an empty image group", template.Metadata.ID)
 		}
 		for _, pattern := range group {
 			if strings.TrimSpace(pattern) == "" || strings.ContainsAny(pattern, " \t\r\n") {
 				return fmt.Errorf("template %q has an invalid image pattern", template.Metadata.ID)
 			}
+			// Patterns are compared against a repository path, so a tag or a
+			// digest in one can never match and would silently disable the
+			// rule it belongs to.
+			if strings.ContainsAny(lastSegment(pattern), ":@") {
+				return fmt.Errorf("template %q pattern %q carries a tag or digest; use the repository path alone",
+					template.Metadata.ID, pattern)
+			}
 		}
 	}
 	return nil
+}
+
+func lastSegment(pattern string) string {
+	if slash := strings.LastIndex(pattern, "/"); slash >= 0 {
+		return pattern[slash+1:]
+	}
+	return pattern
 }
 
 func validID(value string) bool {
