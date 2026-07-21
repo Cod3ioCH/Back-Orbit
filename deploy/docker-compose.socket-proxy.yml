@@ -40,9 +40,15 @@ services:
     environment:
       BACKORBIT_HTTP_ADDR: 0.0.0.0:8080
       BACKORBIT_DATA_DIR: /var/lib/back-orbit
+      BACKORBIT_BACKUP_DIR: /backups
       BACKORBIT_DOCKER_HOST: tcp://docker-socket-proxy:2375
     volumes:
       - back-orbit-data:/var/lib/back-orbit
+      # Kept separate from back-orbit-data on purpose: backups beside the
+      # database would be lost by the same accident that loses the database.
+      # Replace with a bind mount (owned by uid 10001) to keep backups on the
+      # host, where you can copy them off this machine.
+      - back-orbit-backups:/backups
     networks:
       - back-orbit-internal
     depends_on:
@@ -60,3 +66,4 @@ networks:
 
 volumes:
   back-orbit-data:
+  back-orbit-backups:

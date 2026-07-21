@@ -42,6 +42,21 @@ go run ./cmd/back-orbit
 
 Configuration is via environment variables — see [`.env.example`](deploy/.env.example). By default the server binds to `127.0.0.1:8080`, stores its SQLite database under `./data` (override with `BACKORBIT_DATA_DIR`), and talks to Docker at `unix:///var/run/docker.sock` (override with `BACKORBIT_DOCKER_HOST`).
 
+### Where local backups go
+
+The Compose files mount a second volume at `/backups` (override with `BACKORBIT_BACKUP_DIR`), so a fresh install has a writable destination for a local repository without any setup. The "Add repository" dialog offers a path inside it and tells you whether it is actually writable, rather than leaving you to find out at the first backup.
+
+This is deliberately a *different* volume from the one holding Back-Orbit's database. Backups stored beside the database are lost by the same accident that loses the database, so Back-Orbit refuses a repository inside its own data directory.
+
+To keep backups on the host instead — recommended, since you can then copy them off the machine — replace the volume with a bind mount and give the directory to the container's user:
+
+```bash
+mkdir -p /srv/back-orbit-backups
+sudo chown 10001:10001 /srv/back-orbit-backups
+# then in deploy/docker-compose.yml:
+#   - /srv/back-orbit-backups:/backups
+```
+
 ### Frontend
 
 ```bash

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,8 @@ func newService(t *testing.T) (*Service, *secrets.Store, *sql.DB) {
 	}
 
 	recorder := events.NewRecorder(events.NewStore(db), events.NewBroker())
-	return NewService(db, secretStore, backup.NewResticEngine(""), recorder), secretStore, db
+	locations := NewLocations(filepath.Join(t.TempDir(), "data"), filepath.Join(t.TempDir(), "backups"))
+	return NewService(db, secretStore, backup.NewResticEngine(""), recorder, locations), secretStore, db
 }
 
 func createLocal(t *testing.T, svc *Service, name string) Repository {
@@ -181,15 +183,30 @@ func TestCheckRecordsFailure(t *testing.T) {
 	svc, _, _ := newService(t)
 	ctx := context.Background()
 
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: permission bits do not restrict access, so the destination cannot be made unreadable")
+	}
+
+	// The destination is usable when the repository is configured and only
+	// becomes unreadable afterwards — a mount that disappears or loses its
+	// permissions, which is how this failure actually shows up in practice.
+	parent := t.TempDir()
+	location := filepath.Join(parent, "repo")
+
 	repo, err := svc.Create(ctx, "actor", CreateRequest{
 		Name:     "unreadable",
 		Kind:     backup.RepositoryLocal,
-		Location: "/proc/definitely-not-writable/repo",
+		Location: location,
 		Password: "repository-password",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+
+	if err := os.Chmod(parent, 0o000); err != nil {
+		t.Fatalf("make destination unreadable: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
 
 	result, err := svc.Check(ctx, "actor", repo.ID)
 	if err != nil {

@@ -93,7 +93,8 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 		dockerClient: dockerClient,
 		projects:     projects.NewService(db, dockerClient, recorder),
 		secrets:      secretStore,
-		repositories: repositories.NewService(db, secretStore, engine, recorder),
+		repositories: repositories.NewService(db, secretStore, engine, recorder,
+			repositories.NewLocations(cfg.DataDir, cfg.BackupDir)),
 		eventStore:   eventStore,
 		eventBroker:  eventBroker,
 		recorder:     recorder,
@@ -154,6 +155,8 @@ func (s *Server) Router() http.Handler {
 			r.Route("/repositories", func(r chi.Router) {
 				r.Get("/", s.handleListRepositories)
 				r.Post("/", s.handleCreateRepository)
+				// Registered before "/{id}" so it is not read as an ID.
+				r.Get("/locations", s.handleRepositoryLocations)
 				r.Get("/{id}", s.handleGetRepository)
 				r.Delete("/{id}", s.handleDeleteRepository)
 				r.Post("/{id}/check", s.handleCheckRepository)

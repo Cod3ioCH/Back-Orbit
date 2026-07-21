@@ -22,6 +22,14 @@ type Config struct {
 	// areas in later phases).
 	DataDir string
 
+	// BackupDir is the mount point intended for local backup repositories.
+	//
+	// It is deliberately separate from DataDir. Backups stored in the same
+	// volume as Back-Orbit's own database share its fate: lose that volume and
+	// the application state and every backup go together, which is the one
+	// outcome a backup tool exists to prevent.
+	BackupDir string
+
 	// DockerHost is the Docker daemon endpoint, e.g. "unix:///var/run/docker.sock".
 	DockerHost string
 
@@ -52,6 +60,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:          getEnv("BACKORBIT_HTTP_ADDR", "127.0.0.1:8080"),
 		DataDir:           getEnv("BACKORBIT_DATA_DIR", "./data"),
+		BackupDir:         getEnv("BACKORBIT_BACKUP_DIR", "/backups"),
 		DockerHost:        getEnv("BACKORBIT_DOCKER_HOST", "unix:///var/run/docker.sock"),
 		SessionCookieName: getEnv("BACKORBIT_SESSION_COOKIE", "backorbit_session"),
 		TrustProxyHeaders: getEnvBool("BACKORBIT_TRUST_PROXY_HEADERS", false),

@@ -180,6 +180,20 @@ export interface Repository {
   updatedAt: string;
 }
 
+/**
+ * A directory this installation can store a local repository in. `writable`
+ * is probed by the server rather than assumed, so the UI can offer a path that
+ * is known to work instead of one that merely looks plausible.
+ */
+export interface RepositoryLocation {
+  path: string;
+  label: string;
+  description: string;
+  writable: boolean;
+  detail?: string;
+  recommended: boolean;
+}
+
 export interface RepositoryCheckResult {
   status: RepositoryStatus;
   snapshotCount: number;
@@ -234,6 +248,8 @@ export const api = {
   lockSecretStore: () => request<void>("/api/v1/secrets/lock", { method: "POST" }),
 
   listRepositories: () => request<Repository[]>("/api/v1/repositories"),
+  repositoryLocations: () =>
+    request<RepositoryLocation[]>("/api/v1/repositories/locations"),
   createRepository: (input: {
     name: string;
     kind: RepositoryKind;

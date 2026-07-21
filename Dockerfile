@@ -49,8 +49,8 @@ RUN apk add --no-cache ca-certificates wget bzip2 && \
     restic version && \
     addgroup -g 10001 backorbit && \
     adduser -D -u 10001 -G backorbit backorbit && \
-    mkdir -p /var/lib/back-orbit /etc/back-orbit && \
-    chown -R backorbit:backorbit /var/lib/back-orbit /etc/back-orbit
+    mkdir -p /var/lib/back-orbit /etc/back-orbit /backups && \
+    chown -R backorbit:backorbit /var/lib/back-orbit /etc/back-orbit /backups
 
 COPY --from=backend /out/back-orbit /usr/local/bin/back-orbit
 

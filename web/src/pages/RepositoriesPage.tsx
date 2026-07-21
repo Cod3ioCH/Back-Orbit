@@ -1,9 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { HardDrive, Plus, RefreshCw, Trash2, Play } from "lucide-react";
+import {
+  AlertTriangle,
+  FolderCheck,
+  HardDrive,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Play,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -25,7 +33,13 @@ import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Timestamp } from "@/components/Timestamp";
 import { SecretStoreGate } from "@/components/SecretStoreGate";
-import { api, ApiError, type Repository, type RepositoryStatus } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type Repository,
+  type RepositoryLocation,
+  type RepositoryStatus,
+} from "@/lib/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { cn } from "@/lib/utils";
 
@@ -69,13 +83,95 @@ export function RepositoriesPage() {
   );
 }
 
+/**
+ * Turns a repository name into a directory-safe segment, so the suggested path
+ * stays predictable no matter what the name contains.
+ */
+function toPathSegment(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+/**
+ * Explains where a repository can go. Inside a container there is no way to
+ * discover this by looking, so the server probes it and the answer is shown
+ * here rather than left to trial and error.
+ */
+function LocationHint({
+  location,
+  loading,
+}: {
+  location?: RepositoryLocation;
+  loading: boolean;
+}) {
+  if (loading) {
+    return <Skeleton className="h-4 w-2/3" />;
+  }
+
+  if (!location) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No backup directory is mounted into this container. Mount a writable directory and point
+        this path inside it — backups must not live in Back-Orbit's own data volume, or one
+        failure would take both.
+      </p>
+    );
+  }
+
+  if (!location.writable) {
+    return (
+      <div className="flex gap-2 rounded-md border border-warning/30 bg-warning/15 p-2.5 text-xs text-warning">
+        <AlertTriangle className="mt-px size-3.5 shrink-0" />
+        <p>{location.detail ?? `${location.path} is not writable by Back-Orbit.`}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-2 text-xs text-muted-foreground">
+      <FolderCheck className="mt-px size-3.5 shrink-0 text-success" />
+      <p>
+        <span className="font-mono text-foreground">{location.path}</span> is ready to use.{" "}
+        {location.description} Paths are inside the container, not on your desktop.
+      </p>
+    </div>
+  );
+}
+
 function RepositoryList() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const query = useQuery({ queryKey: ["repositories"], queryFn: api.listRepositories });
+  const locationsQuery = useQuery({
+    queryKey: ["repository-locations"],
+    queryFn: api.repositoryLocations,
+  });
+  const suggested = locationsQuery.data?.find((l) => l.recommended) ?? locationsQuery.data?.[0];
 
   const form = useForm<CreateValues>({ resolver: zodResolver(createSchema) });
+
+  // The directory follows the name until the operator edits it themselves,
+  // after which it is left alone. Most people never need to think about the
+  // path at all; anyone who does keeps full control of it.
+  const [locationEdited, setLocationEdited] = useState(false);
+  const name = form.watch("name");
+
+  useEffect(() => {
+    if (locationEdited || !suggested?.writable) return;
+    const segment = toPathSegment(name ?? "");
+    form.setValue("location", segment ? `${suggested.path}/${segment}` : "");
+  }, [name, suggested, locationEdited, form]);
+
+  // A rejected repository is explained in the dialog rather than in a toast.
+  // The reason names a path and what to use instead, which is more than can be
+  // read before a toast disappears — and it belongs next to the field it is
+  // about, while that field is still on screen.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const createMutation = useMutation({
     mutationFn: (values: CreateValues) =>
       api.createRepository({ ...values, kind: "local" }),
@@ -84,22 +180,35 @@ function RepositoryList() {
       toast.success("Repository added. Check it to see whether it needs initialising.");
       setDialogOpen(false);
       form.reset();
+      setLocationEdited(false);
+      setSubmitError(null);
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : "Could not add the repository."),
+      setSubmitError(
+        error instanceof ApiError ? error.message : "Could not add the repository.",
+      ),
   });
 
   return (
     <>
       <div className="flex justify-end">
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) setSubmitError(null);
+          }}
+        >
           <DialogTrigger render={<Button />}>
             <Plus className="size-4" />
             Add repository
           </DialogTrigger>
           <DialogContent>
             <form
-              onSubmit={form.handleSubmit((values) => createMutation.mutate(values))}
+              onSubmit={form.handleSubmit((values) => {
+                setSubmitError(null);
+                createMutation.mutate(values);
+              })}
               noValidate
             >
               <DialogHeader>
@@ -111,6 +220,15 @@ function RepositoryList() {
               </DialogHeader>
 
               <div className="space-y-4 py-4">
+                {submitError && (
+                  <div
+                    role="alert"
+                    className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                  >
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                    <p>{submitError}</p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="repo-name">Name</Label>
                   <Input id="repo-name" {...form.register("name")} />
@@ -120,16 +238,19 @@ function RepositoryList() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="repo-location">Directory</Label>
-                  <Input id="repo-location" placeholder="/srv/backups/main" {...form.register("location")} />
+                  <Input
+                    id="repo-location"
+                    placeholder={suggested ? `${suggested.path}/main` : "/backups/main"}
+                    {...form.register("location", {
+                      onChange: () => setLocationEdited(true),
+                    })}
+                  />
                   {form.formState.errors.location && (
                     <p className="text-sm text-destructive">
                       {form.formState.errors.location.message}
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground">
-                    Must be a path Back-Orbit itself can write to — inside the container, not on
-                    your desktop.
-                  </p>
+                  <LocationHint location={suggested} loading={locationsQuery.isLoading} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="repo-password">Repository password</Label>

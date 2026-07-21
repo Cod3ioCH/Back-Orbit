@@ -20,20 +20,31 @@ import (
 // owns the relationship between a repository row, its password in the secret
 // store, and the backup engine that talks to it.
 type Service struct {
-	store    *store
-	secrets  *secrets.Store
-	engine   backup.BackupEngine
-	recorder *events.Recorder
+	store     *store
+	secrets   *secrets.Store
+	engine    backup.BackupEngine
+	recorder  *events.Recorder
+	locations *Locations
 }
 
 // NewService wires up a Service.
-func NewService(db *sql.DB, secretStore *secrets.Store, engine backup.BackupEngine, recorder *events.Recorder) *Service {
+func NewService(db *sql.DB, secretStore *secrets.Store, engine backup.BackupEngine, recorder *events.Recorder, locations *Locations) *Service {
 	return &Service{
-		store:    newStore(db),
-		secrets:  secretStore,
-		engine:   engine,
-		recorder: recorder,
+		store:     newStore(db),
+		secrets:   secretStore,
+		engine:    engine,
+		recorder:  recorder,
+		locations: locations,
 	}
+}
+
+// Locations reports where local repositories can be stored on this
+// installation.
+func (s *Service) Locations() []Location {
+	if s.locations == nil {
+		return nil
+	}
+	return s.locations.Suggest()
 }
 
 // List returns every configured repository. It works with the secret store
@@ -62,9 +73,20 @@ type CreateRequest struct {
 // Creating a repository does not initialise it or contact the destination:
 // those are separate, explicit actions, so adding a configuration never has a
 // side effect on storage the operator did not ask for.
+//
+// A local path is nevertheless checked for usability before it is stored.
+// That check writes nothing and creates no directory, but it turns the two
+// mistakes that are otherwise invisible until much later — an unwritable
+// destination, and one that shares a volume with Back-Orbit's own database —
+// into an answer while the operator is still looking at the form.
 func (s *Service) Create(ctx context.Context, actorUserID string, req CreateRequest) (Repository, error) {
 	if err := validateCreate(req); err != nil {
 		return Repository{}, err
+	}
+	if req.Kind == backup.RepositoryLocal && s.locations != nil {
+		if err := s.locations.validateLocalPath(strings.TrimSpace(req.Location)); err != nil {
+			return Repository{}, err
+		}
 	}
 
 	now := time.Now().UTC()
