@@ -237,6 +237,24 @@ func (d DatabaseDump) Replay() string {
 		// -p without a value makes the client prompt, so no password is
 		// written down anywhere.
 		return fmt.Sprintf("docker compose exec -T %s %s -u %s -p < %s", d.Service, client, user, d.Path)
+	case "mongodb":
+		// mongorestore reads the archive mongodump wrote. --drop replaces
+		// existing collections, which is what restoring means.
+		//
+		// The exclusions are not tidiness. A mongodump archive contains the
+		// admin database, and restoring it replaces the target server's
+		// accounts with the source's — verified: the data came back, and then
+		// nothing could authenticate except the credentials from the machine
+		// the backup was taken on. mongodump has no --excludeDatabase, so the
+		// exclusion belongs here, on the way back in.
+		auth := ""
+		if user != "" {
+			auth = fmt.Sprintf(" -u %s --authenticationDatabase admin -p", user)
+		}
+		return fmt.Sprintf(
+			"docker compose exec -T %s mongorestore --archive --drop "+
+				"--nsExclude 'admin.*' --nsExclude 'config.*'%s < %s",
+			d.Service, auth, d.Path)
 	default:
 		return ""
 	}

@@ -13,11 +13,11 @@ import (
 
 // dumpEngines maps a detected technology to the exporter that can handle it.
 //
-// MongoDB, Redis and Valkey are deliberately absent: they stay on the
-// file-copy path and keep their warning. An engine is listed here once it can
-// actually be exported, never before — the list is what the run trusts when it
-// decides whether to warn.
-var dumpEngines = map[string]bool{"postgresql": true, "mysql": true, "mariadb": true}
+// Redis and Valkey are deliberately absent: they stay on the file-copy path
+// and keep their warning. An engine is listed here once it can actually be
+// exported, never before — the list is what the run trusts when it decides
+// whether to warn.
+var dumpEngines = map[string]bool{"postgresql": true, "mysql": true, "mariadb": true, "mongodb": true}
 
 // credentialKeys names the environment variables each engine keeps its
 // superuser credentials in. Only these keys are ever read from a container's
@@ -26,6 +26,9 @@ var credentialKeys = map[string]struct{ user, password []string }{
 	"postgresql": {user: []string{"POSTGRES_USER"}},
 	"mysql":      {user: []string{"MYSQL_ROOT_USER"}, password: []string{"MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD"}},
 	"mariadb":    {user: []string{"MARIADB_ROOT_USER"}, password: []string{"MARIADB_ROOT_PASSWORD", "MYSQL_ROOT_PASSWORD"}},
+	// Absent on an unauthenticated server, which is the image's default and
+	// common inside a Compose network. The dump then needs no credentials.
+	"mongodb": {user: []string{"MONGO_INITDB_ROOT_USERNAME"}, password: []string{"MONGO_INITDB_ROOT_PASSWORD"}},
 }
 
 // dumpResult pairs a written dump with the service it came from.
@@ -137,6 +140,8 @@ func (r *Runner) dumpOne(
 		return dbdump.PostgreSQL(ctx, r.docker, target, stagingDir)
 	case "mysql", "mariadb":
 		return dbdump.MySQL(ctx, r.docker, target, stagingDir)
+	case "mongodb":
+		return dbdump.MongoDB(ctx, r.docker, target, stagingDir)
 	default:
 		return dbdump.Result{}, fmt.Errorf("no exporter for %s", finding.Technology)
 	}

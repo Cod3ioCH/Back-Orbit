@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -28,6 +29,15 @@ type ExecRequest struct {
 	// `ps`, while a process environment is not. Values here are secret by
 	// assumption — nothing in this package logs them.
 	Env []string
+
+	// Stdin, when set, is written to the command's standard input.
+	//
+	// This exists for one reason: mongodump has no environment variable for a
+	// password, so its credentials are handed over as a config file on stdin.
+	// The alternatives were argv, which any process on the host can read
+	// through `ps`, and a temporary file in the container, which leaves the
+	// password on disk if the process dies before cleaning it up.
+	Stdin []byte
 
 	// Stdout receives the command's standard output as it arrives.
 	//
@@ -77,12 +87,21 @@ func (c *sdkClient) ExecInContainer(ctx context.Context, containerID string, req
 		create["Env"] = req.Env
 	}
 
+	if len(req.Stdin) > 0 {
+		create["AttachStdin"] = true
+	}
+
 	execID, err := c.createExec(ctx, containerID, create)
 	if err != nil {
 		return ExecResult{}, err
 	}
 
-	stderr, err := c.startExec(ctx, execID, req.Stdout)
+	var stderr string
+	if len(req.Stdin) > 0 {
+		stderr, err = c.startExecWithStdin(ctx, execID, req.Stdin, req.Stdout)
+	} else {
+		stderr, err = c.startExec(ctx, execID, req.Stdout)
+	}
 	if err != nil {
 		return ExecResult{}, err
 	}
@@ -262,4 +281,70 @@ func (c *sdkClient) ContainerEnvValue(ctx context.Context, containerID, key stri
 		}
 	}
 	return "", nil
+}
+
+// startExecWithStdin runs the command over a hijacked connection, writing
+// stdin and then streaming the output back.
+//
+// Docker turns the HTTP connection into a raw bidirectional stream once the
+// request is accepted, which net/http's client cannot express — so the request
+// is written by hand over the socket the client already knows how to open.
+func (c *sdkClient) startExecWithStdin(ctx context.Context, execID string, stdin []byte, stdout io.Writer) (string, error) {
+	if c.dial == nil {
+		return "", fmt.Errorf("docker: this Docker host does not support streaming input to a command")
+	}
+
+	conn, err := c.dial(ctx)
+	if err != nil {
+		return "", fmt.Errorf("docker: connect for exec: %w", err)
+	}
+	defer conn.Close()
+
+	// The caller's context still bounds the whole exchange.
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+
+	body, err := json.Marshal(map[string]any{"Detach": false, "Tty": false})
+	if err != nil {
+		return "", err
+	}
+
+	host := strings.TrimPrefix(strings.TrimPrefix(c.baseURL, "http://"), "https://")
+	request := fmt.Sprintf(
+		"POST /exec/%s/start HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\n"+
+			"Connection: Upgrade\r\nUpgrade: tcp\r\nContent-Length: %d\r\n\r\n%s",
+		execID, host, len(body), body)
+	if _, err := conn.Write([]byte(request)); err != nil {
+		return "", fmt.Errorf("docker: send exec request: %w", err)
+	}
+
+	reader := bufio.NewReader(conn)
+	response, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		return "", fmt.Errorf("docker: read exec response: %w", err)
+	}
+	if response.StatusCode >= 400 {
+		detail, _ := io.ReadAll(io.LimitReader(reader, 4096))
+		return "", fmt.Errorf("docker: exec start returned %d: %s",
+			response.StatusCode, strings.TrimSpace(string(detail)))
+	}
+
+	// The command is waiting on its input, so this goes first. Half-closing
+	// afterwards is what tells it there is no more to come — without that, a
+	// tool reading its configuration from stdin waits forever.
+	if _, err := conn.Write(stdin); err != nil {
+		return "", fmt.Errorf("docker: write command input: %w", err)
+	}
+	if halfCloser, ok := conn.(interface{ CloseWrite() error }); ok {
+		_ = halfCloser.CloseWrite()
+	}
+
+	var stderr bytes.Buffer
+	if err := demultiplex(reader, stdout, &stderr); err != nil {
+		return stderr.String(), fmt.Errorf("docker: read exec output: %w", err)
+	}
+	return stderr.String(), nil
 }

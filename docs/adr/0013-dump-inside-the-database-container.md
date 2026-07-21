@@ -32,6 +32,10 @@ PostgreSQL is exported with `pg_dumpall`, which includes roles: ownership and gr
 
 The MySQL family is exported per user database, with the system schemas excluded by name. `--all-databases` was the obvious choice and produced an unrestorable dump: it includes the `mysql` schema, whose user table carries the source server's credentials. Replaying that into a running server replaces its accounts mid-import, the importing session loses the authorisation it is using, and the import dies — before reaching any user database, because `mysql` sorts ahead of most names. The dump was several megabytes and restored nothing.
 
+MongoDB is exported as a single `--archive` stream. Its credentials are the awkward case: mongodump has no environment variable for a password, and the documented ways in are the command line, a config file, or a prompt. The command line is readable by any process on the host through `ps`, and a config file written into the container would leave the password on disk if anything died before removing it — so the config goes in on standard input and exists only in the pipe between the two processes. An unauthenticated server, which is the image's default, needs none of this.
+
+A mongodump archive contains the `admin` database, and mongodump has no `--excludeDatabase`. Restoring the archive therefore replaces the target server's accounts with the source's: verified against real servers, the documents came back and then nothing could authenticate except the credentials from the machine the backup was taken on. The exclusion belongs on the way back in, so the replay command carries `--nsExclude 'admin.*'`.
+
 The engines therefore differ on purpose. `pg_dumpall` emits roles as statements a target can absorb; MySQL replaces a system catalogue wholesale. Grants are consequently not carried for the MySQL family, and the target server keeps its own accounts.
 
 ## Consequences

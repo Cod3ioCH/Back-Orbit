@@ -97,6 +97,11 @@ func (f *FakeClient) ExecInContainer(ctx context.Context, containerID string, re
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	// The stdin bytes are copied: a caller may reuse its buffer, and a test
+	// asserting on a password would otherwise see whatever came last.
+	if len(req.Stdin) > 0 {
+		req.Stdin = append([]byte(nil), req.Stdin...)
+	}
 	f.ExecCalls = append(f.ExecCalls, req)
 	if f.ExecErr != nil {
 		return ExecResult{}, f.ExecErr

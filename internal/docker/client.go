@@ -32,6 +32,11 @@ type sdkClient struct {
 	http    *http.Client
 	baseURL string
 	host    string
+	// dial opens a raw connection to the daemon, for the one call that needs
+	// the socket rather than a request/response pair: an exec that writes to
+	// the command's standard input. Docker hijacks that connection, which
+	// net/http's client cannot express.
+	dial func(ctx context.Context) (net.Conn, error)
 }
 
 // NewClient creates a Client connected to host, which may be a Unix socket
@@ -41,6 +46,7 @@ type sdkClient struct {
 func NewClient(host string) (Client, error) {
 	transport := &http.Transport{}
 	var baseURL string
+	var dial func(ctx context.Context) (net.Conn, error)
 
 	switch {
 	case strings.HasPrefix(host, "unix://"):
@@ -49,9 +55,18 @@ func NewClient(host string) (Client, error) {
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", socketPath)
 		}
+		dial = func(ctx context.Context) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", socketPath)
+		}
 		baseURL = "http://docker"
 	case strings.HasPrefix(host, "tcp://"):
-		baseURL = "http://" + strings.TrimPrefix(host, "tcp://")
+		address := strings.TrimPrefix(host, "tcp://")
+		dial = func(ctx context.Context) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "tcp", address)
+		}
+		baseURL = "http://" + address
 	case strings.HasPrefix(host, "http://"), strings.HasPrefix(host, "https://"):
 		baseURL = host
 	default:
@@ -62,6 +77,7 @@ func NewClient(host string) (Client, error) {
 		http:    &http.Client{Transport: transport},
 		baseURL: baseURL,
 		host:    host,
+		dial:    dial,
 	}, nil
 }
 

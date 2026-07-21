@@ -97,3 +97,41 @@ func TestUnconfiguredUsersFallBackToTheImageDefault(t *testing.T) {
 		t.Errorf("expected the MySQL default user: %s", mysql.Replay())
 	}
 }
+
+// TestMongoReplayKeepsTheTargetsOwnAccounts. A mongodump archive contains the
+// admin database, and restoring it replaces the target server's accounts with
+// the source's. Verified against real servers: the documents came back, and
+// then nothing could authenticate except the credentials from the machine the
+// backup was taken on. mongodump has no --excludeDatabase, so the exclusion
+// has to be on the way back in.
+func TestMongoReplayKeepsTheTargetsOwnAccounts(t *testing.T) {
+	dump := DatabaseDump{Technology: "mongodb", Service: "mongo", User: "admin",
+		Level: ProtectionExported, Path: "back-orbit-dumps/mongo-mongodb.archive"}
+
+	replay := dump.Replay()
+	for _, needed := range []string{"mongorestore", "--archive", "--drop",
+		"--nsExclude 'admin.*'", "--nsExclude 'config.*'"} {
+		if !strings.Contains(replay, needed) {
+			t.Errorf("replay is missing %q: %s", needed, replay)
+		}
+	}
+	// -p ends the credentials, so the client prompts rather than carrying a
+	// password into a terminal history.
+	if !strings.Contains(replay, "-p <") {
+		t.Errorf("the password must be prompted for: %s", replay)
+	}
+}
+
+// TestAnUnauthenticatedMongoNeedsNoCredentialsInTheReplay either.
+func TestAnUnauthenticatedMongoNeedsNoCredentialsInTheReplay(t *testing.T) {
+	dump := DatabaseDump{Technology: "mongodb", Service: "mongo",
+		Level: ProtectionExported, Path: "a.archive"}
+
+	replay := dump.Replay()
+	if strings.Contains(replay, "-u ") || strings.Contains(replay, "authenticationDatabase") {
+		t.Errorf("an unauthenticated server needs no credentials: %s", replay)
+	}
+	if !strings.Contains(replay, "--nsExclude 'admin.*'") {
+		t.Errorf("the exclusion applies regardless of authentication: %s", replay)
+	}
+}
