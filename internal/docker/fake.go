@@ -49,7 +49,16 @@ type FakeClient struct {
 	EnvValues         map[string]string
 	StartedContainers []string
 	StartErr          error
+	Uploads           []Upload
+	UploadErr         error
 	liveContainers    map[string]bool
+}
+
+// Upload records one PutArchive call.
+type Upload struct {
+	ContainerID string
+	Destination string
+	Bytes       []byte
 }
 
 // NewFakeClient creates a FakeClient reporting a connected status by
@@ -128,6 +137,15 @@ func (f *FakeClient) ContainerEnvValue(ctx context.Context, containerID, key str
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.EnvValues[key], nil
+}
+
+// PutArchive records what was uploaded, so a test can assert the file landed.
+func (f *FakeClient) PutArchive(ctx context.Context, containerID, destination string, tarStream io.Reader) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	body, _ := io.ReadAll(tarStream)
+	f.Uploads = append(f.Uploads, Upload{ContainerID: containerID, Destination: destination, Bytes: body})
+	return f.UploadErr
 }
 
 // StartContainer records the start of a long-running helper.

@@ -1,9 +1,30 @@
-import { useState } from "react";
-import { AlertTriangle, Check, Copy, Database, FileText, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  Database,
+  FileText,
+  Loader2,
+  RotateCcw,
+  ShieldCheck,
+} from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { DatabaseDump, ProtectionLevel } from "@/lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { api, type DatabaseDump, type ProtectionLevel } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 /**
@@ -50,6 +71,25 @@ const TECHNOLOGY_NAMES: Record<string, string> = {
   valkey: "Valkey",
 };
 
+/**
+ * Exactly how much a restore replaces, per engine.
+ *
+ * Not one sentence for all of them, because they do not do the same thing:
+ * mongorestore drops the collections its archive holds and leaves the rest,
+ * while the SQL dumps drop and recreate whole databases. Verified against each
+ * engine — a collection created after the backup does survive a MongoDB
+ * restore, and saying otherwise would be a promise this cannot keep.
+ */
+const REPLACEMENT_SCOPE: Record<string, string> = {
+  postgresql:
+    "Every database in the export is dropped and recreated as it was when the backup ran.",
+  mysql: "Every database in the export is dropped and recreated as it was when the backup ran.",
+  mariadb: "Every database in the export is dropped and recreated as it was when the backup ran.",
+  mongodb:
+    "Every collection in the export is dropped and restored. Collections created since the backup are left where they are — mongorestore replaces what it holds, not the whole database.",
+  default: "The contents of the export replace what is in the database now.",
+};
+
 function formatBytes(bytes: number): string {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;
@@ -63,7 +103,14 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
-export function DatabaseProtection({ databases }: { databases: DatabaseDump[] }) {
+export function DatabaseProtection({
+  databases,
+  snapshotId,
+}: {
+  databases: DatabaseDump[];
+  /** Omitted where no snapshot context exists; the restore action is then hidden. */
+  snapshotId?: string;
+}) {
   if (databases.length === 0) return null;
 
   return (
@@ -73,14 +120,24 @@ export function DatabaseProtection({ databases }: { databases: DatabaseDump[] })
       </p>
       <ul className="space-y-2">
         {databases.map((database) => (
-          <DatabaseRow key={`${database.service}-${database.technology}`} database={database} />
+          <DatabaseRow
+            key={`${database.service}-${database.technology}`}
+            database={database}
+            snapshotId={snapshotId}
+          />
         ))}
       </ul>
     </div>
   );
 }
 
-function DatabaseRow({ database }: { database: DatabaseDump }) {
+function DatabaseRow({
+  database,
+  snapshotId,
+}: {
+  database: DatabaseDump;
+  snapshotId?: string;
+}) {
   const level = LEVELS[database.level] ?? LEVELS.files_only;
   const Icon = level.icon;
 
@@ -132,16 +189,134 @@ function DatabaseRow({ database }: { database: DatabaseDump }) {
         </p>
       )}
 
-      {/* The command turns a file in a snapshot into a restore someone can
-          actually perform. Shown rather than run: replaying a dump replaces a
-          live database, which needs the same deliberate confirmation as any
-          other destructive action. */}
-      {database.replay && <ReplayCommand command={database.replay} />}
+      {/* Putting the database back — either by Back-Orbit, or by hand.
+          Both are offered: the button is the practised path, and the command
+          is what still works when this UI is the thing that is down. */}
+      {database.replay && (
+        <div className="mt-2 space-y-2">
+          {snapshotId && database.level === "exported" && (
+            <RestoreAction database={database} snapshotId={snapshotId} />
+          )}
+          <ReplayCommand command={database.replay} manual={Boolean(snapshotId)} />
+        </div>
+      )}
     </li>
   );
 }
 
-function ReplayCommand({ command }: { command: string }) {
+/**
+ * Replaying an export into the running service.
+ *
+ * This is the only control in Back-Orbit that writes into a database someone
+ * is using, so it asks for the service name to be typed — the same bar as
+ * deleting a repository. The server enforces the same rule independently; the
+ * dialog is the explanation, not the safeguard.
+ */
+function RestoreAction({
+  database,
+  snapshotId,
+}: {
+  database: DatabaseDump;
+  snapshotId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!open) setTyped("");
+  }, [open]);
+
+  const restore = useMutation({
+    mutationFn: () => api.restoreDatabase(snapshotId, database.service, typed),
+    onSuccess: () => {
+      setOpen(false);
+      toast.success(
+        `Restoring ${database.service}. Watch it finish under Restore.`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["restores"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const matches = typed === database.service;
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+      >
+        <RotateCcw className="size-3.5" />
+        Restore into {database.service}
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restore “{database.service}” from this snapshot?</DialogTitle>
+            <DialogDescription>
+              The export is replayed into the running{" "}
+              {TECHNOLOGY_NAMES[database.technology] ?? database.technology} server.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div
+              role="alert"
+              className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+            >
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <div className="space-y-1">
+                <p className="font-medium">
+                  Everything currently in this database is replaced.
+                </p>
+                <p>{REPLACEMENT_SCOPE[database.technology] ?? REPLACEMENT_SCOPE.default}</p>
+                <p>Anything written since the backup is gone, and nothing here can bring it back.</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor={`confirm-restore-${database.service}`}>
+                Type <span className="font-mono font-semibold">{database.service}</span> to
+                confirm
+              </Label>
+              <Input
+                id={`confirm-restore-${database.service}`}
+                value={typed}
+                autoComplete="off"
+                onChange={(event) => setTyped(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={restore.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => restore.mutate()}
+              disabled={!matches || restore.isPending}
+              aria-busy={restore.isPending}
+            >
+              {restore.isPending && <Loader2 className="size-4 animate-spin" />}
+              Replace the database
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function ReplayCommand({ command, manual }: { command: string; manual: boolean }) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
@@ -156,8 +331,10 @@ function ReplayCommand({ command }: { command: string }) {
   };
 
   return (
-    <div className="mt-2 space-y-1">
-      <p className="text-xs text-muted-foreground">To put this database back:</p>
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground">
+        {manual ? "Or put it back yourself:" : "To put this database back:"}
+      </p>
       <div className="flex items-start gap-2">
         <code className="min-w-0 flex-1 rounded-md bg-muted/60 px-2 py-1.5 font-mono text-xs break-all">
           {command}
@@ -175,6 +352,7 @@ function ReplayCommand({ command }: { command: string }) {
       <p className="text-xs text-muted-foreground">
         Run it from the project directory, against the extracted snapshot. It replaces the
         database's current contents.
+        {manual && " Useful for restoring into a different server than the one this came from."}
       </p>
     </div>
   );

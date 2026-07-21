@@ -142,6 +142,9 @@ type Client interface {
 	// passwords, and returning all of it invites a caller to keep the lot.
 	ContainerEnvValue(ctx context.Context, containerID, key string) (string, error)
 
+	// PutArchive writes files into a container from a tar stream.
+	PutArchive(ctx context.Context, containerID, destination string, tarStream io.Reader) error
+
 	// StartContainer starts a container and returns without waiting for it to
 	// finish. Used for a throwaway database server, which is expected to keep
 	// running until it is removed.

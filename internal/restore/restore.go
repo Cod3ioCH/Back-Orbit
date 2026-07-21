@@ -18,6 +18,7 @@ import (
 
 	"github.com/Cod3ioCH/Back-Orbit/internal/backup"
 	"github.com/Cod3ioCH/Back-Orbit/internal/backuprun"
+	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
 	"github.com/Cod3ioCH/Back-Orbit/internal/events"
 )
 
@@ -108,13 +109,16 @@ type Runner struct {
 	engine       backup.BackupEngine
 	recorder     *events.Recorder
 	root         string
-	mu           sync.Mutex
-	active       map[string]context.CancelFunc
-	bySnapshot   map[string]string
+	// docker is needed to replay an export into the database it came from.
+	// Optional: without it the file-extraction path still works.
+	docker     docker.Client
+	mu         sync.Mutex
+	active     map[string]context.CancelFunc
+	bySnapshot map[string]string
 }
 
-func NewRunner(db *sql.DB, snapshots snapshotProvider, repos repositoryProvider, engine backup.BackupEngine, recorder *events.Recorder, root string) *Runner {
-	return &Runner{db: db, snapshots: snapshots, repositories: repos, engine: engine, recorder: recorder, root: root, active: map[string]context.CancelFunc{}, bySnapshot: map[string]string{}}
+func NewRunner(db *sql.DB, snapshots snapshotProvider, repos repositoryProvider, engine backup.BackupEngine, recorder *events.Recorder, root string, dockerClient docker.Client) *Runner {
+	return &Runner{db: db, snapshots: snapshots, repositories: repos, engine: engine, recorder: recorder, root: root, docker: dockerClient, active: map[string]context.CancelFunc{}, bySnapshot: map[string]string{}}
 }
 
 func (r *Runner) Preview(ctx context.Context, req PreviewRequest) (Preview, error) {

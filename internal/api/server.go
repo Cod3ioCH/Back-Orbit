@@ -120,7 +120,7 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 		repositories: repositoryService,
 		backups:      backupRunner,
 		restores: restorejobs.NewRunner(db, backupRunner, repositoryService, engine, recorder,
-			filepath.Join(cfg.DataDir, "restores")),
+			filepath.Join(cfg.DataDir, "restores"), dockerClient),
 		eventStore:  eventStore,
 		eventBroker: eventBroker,
 		recorder:    recorder,
@@ -200,6 +200,7 @@ func (s *Server) Router() http.Handler {
 				r.Get("/", s.handleListRestoreRuns)
 				r.Post("/preview", s.handlePreviewRestore)
 				r.Post("/", s.handleStartRestore)
+				r.Post("/database", s.handleRestoreDatabase)
 				r.Get("/{id}", s.handleGetRestoreRun)
 				r.Post("/{id}/cancel", s.handleCancelRestoreRun)
 			})

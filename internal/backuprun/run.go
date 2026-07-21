@@ -236,7 +236,10 @@ func (d DatabaseDump) Replay() string {
 		if user == "" {
 			user = "postgres"
 		}
-		return fmt.Sprintf("docker compose exec -T %s psql -U %s < %s", d.Service, user, d.Path)
+		// -d postgres, because without it psql connects to a database named
+		// after the user, which need not exist. The dump switches database
+		// itself; this is only where the session starts.
+		return fmt.Sprintf("docker compose exec -T %s psql -U %s -d postgres < %s", d.Service, user, d.Path)
 	case "mysql", "mariadb":
 		client := "mysql"
 		if d.Technology == "mariadb" {

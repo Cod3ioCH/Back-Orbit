@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { DatabaseProtection } from "@/components/DatabaseProtection";
 import type { DatabaseDump } from "@/lib/api";
+
+function renderWithQuery(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 const exported: DatabaseDump = {
   technology: "postgresql",
@@ -55,5 +62,40 @@ describe("DatabaseProtection", () => {
   it("renders nothing when the snapshot holds no databases", () => {
     const { container } = render(<DatabaseProtection databases={[]} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  // Replaying an export destroys whatever is in the database now. The action
+  // only appears where Back-Orbit can actually perform it.
+  it("offers no restore action without a snapshot to restore from", () => {
+    renderWithQuery(<DatabaseProtection databases={[exported]} />);
+
+    expect(screen.queryByRole("button", { name: /restore into/i })).not.toBeInTheDocument();
+  });
+
+  it("does not offer to replay a database that was only copied", () => {
+    renderWithQuery(<DatabaseProtection databases={[filesOnly]} snapshotId="snapshot-1" />);
+
+    expect(screen.queryByRole("button", { name: /restore into/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the restore locked until the service is named", async () => {
+    const user = userEvent.setup();
+    renderWithQuery(<DatabaseProtection databases={[exported]} snapshotId="snapshot-1" />);
+
+    await user.click(screen.getByRole("button", { name: /restore into db/i }));
+
+    const confirm = screen.getByRole("button", { name: /replace the database/i });
+    expect(confirm).toBeDisabled();
+    // What is at stake is stated before the field, not after the click.
+    expect(
+      screen.getByText(/Everything currently in this database is replaced/i),
+    ).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/type db to confirm/i), "yes");
+    expect(confirm).toBeDisabled();
+
+    await user.clear(screen.getByLabelText(/type db to confirm/i));
+    await user.type(screen.getByLabelText(/type db to confirm/i), "db");
+    expect(confirm).toBeEnabled();
   });
 });

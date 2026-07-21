@@ -111,6 +111,12 @@ func MySQL(ctx context.Context, client docker.Client, target Target, stagingDir 
 	for _, tool := range tools {
 		command := []string{tool,
 			"--databases",
+			// Each database is dropped before it is recreated, so replaying
+			// this dump restores the state the backup captured rather than
+			// merging into whatever is there now. Without it a table created
+			// after the backup survives the restore, and the result is a
+			// database that never existed at any point in time.
+			"--add-drop-database",
 			// One consistent read view instead of locking the server.
 			"--single-transaction",
 			// Stored programs and scheduled events are part of the schema; a

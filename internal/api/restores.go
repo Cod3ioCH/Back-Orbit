@@ -72,9 +72,46 @@ func writeRestoreError(w http.ResponseWriter, err error) {
 		writeError(w, 422, "this restore mode is not safe for the selected snapshot; run a preview for details")
 	case errors.Is(err, restore.ErrAlreadyRunning):
 		writeError(w, 409, err.Error())
+	case errors.Is(err, restore.ErrNotConfirmed):
+		writeError(w, 400, err.Error())
+	case errors.Is(err, restore.ErrNoExport):
+		writeError(w, 422, err.Error())
 	case errors.Is(err, secrets.ErrLocked):
-		writeError(w, 409, "the secret store is locked; unlock it and try again")
+		writeError(w, 409,
+			"the secret store is locked, so the snapshot cannot be read; unlock it and try again")
 	default:
 		writeError(w, 500, "restore operation failed")
 	}
+}
+
+type restoreDatabaseRequest struct {
+	SnapshotID string `json:"snapshotId"`
+	Service    string `json:"service"`
+	// Confirm must repeat the service name. This call replaces a live
+	// database, and a confirmation only the UI enforces is a dialog, not a
+	// safeguard — the API is reachable without it.
+	Confirm string `json:"confirm"`
+}
+
+// handleRestoreDatabase replays one database's export back into the running
+// service it came from, replacing what is there.
+func (s *Server) handleRestoreDatabase(w http.ResponseWriter, r *http.Request) {
+	var req restoreDatabaseRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	user, _ := auth.UserFromContext(r.Context())
+	run, err := s.restores.RestoreDatabase(r.Context(), restore.DatabaseRequest{
+		SnapshotID:  req.SnapshotID,
+		Service:     req.Service,
+		Confirm:     req.Confirm,
+		ActorUserID: user.ID,
+	})
+	if err != nil {
+		writeRestoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, run)
 }

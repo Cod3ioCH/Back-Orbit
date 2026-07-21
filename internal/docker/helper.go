@@ -387,3 +387,35 @@ func demultiplexDockerStream(raw []byte) []byte {
 	}
 	return append(out, raw...)
 }
+
+// PutArchive writes files into a container from a tar stream.
+//
+// Needed for restoring a MongoDB archive: mongorestore reads the archive from
+// standard input, which leaves no way to also hand it a password there. So the
+// archive goes in as a file and the credentials keep stdin to themselves. The
+// file is the database's own data on its way back into that database, not a
+// secret being written somewhere new.
+func (c *sdkClient) PutArchive(ctx context.Context, containerID, destination string, tarStream io.Reader) error {
+	query := url.Values{}
+	query.Set("path", destination)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		c.baseURL+"/containers/"+containerID+"/archive?"+query.Encode(), tarStream)
+	if err != nil {
+		return fmt.Errorf("docker: build upload request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-tar")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("docker: upload to container: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("docker: upload returned %d: %s",
+			resp.StatusCode, strings.TrimSpace(string(detail)))
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
+}

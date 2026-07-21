@@ -319,7 +319,10 @@ function RunRow({ run }: { run: BackupRun }) {
                     repository check covers.
                   </p>
 
-                  <DatabaseProtection databases={snapshot.manifest.databases ?? []} />
+                  <DatabaseProtection
+                    databases={snapshot.manifest.databases ?? []}
+                    snapshotId={snapshot.id}
+                  />
 
                   {snapshot.manifest.volumes.map((volume) => (
                     <div key={volume.name} className="border-t border-border pt-2">

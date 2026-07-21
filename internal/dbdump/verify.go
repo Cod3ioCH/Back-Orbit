@@ -299,9 +299,17 @@ func waitReady(ctx context.Context, client docker.Client, containerID string, pl
 // default database empty, and counting there would report a healthy restore as
 // empty.
 func countPostgresTables(ctx context.Context, client docker.Client, containerID, password string) (int, error) {
+	// The throwaway verification server always runs as the image's own
+	// superuser; a live one may not.
+	return countPostgresTablesAs(ctx, client, containerID, "postgres", password)
+}
+
+// countPostgresTablesAs is the same count against a server whose superuser is
+// whatever the project configured.
+func countPostgresTablesAs(ctx context.Context, client docker.Client, containerID, user, password string) (int, error) {
 	var list strings.Builder
 	result, err := client.ExecInContainer(ctx, containerID, docker.ExecRequest{
-		Cmd: []string{"psql", "-U", "postgres", "-t", "-A", "-c",
+		Cmd: []string{"psql", "-U", user, "-d", "postgres", "-t", "-A", "-c",
 			"select datname from pg_database where datistemplate = false"},
 		Stdout: &list,
 	})
@@ -322,7 +330,7 @@ func countPostgresTables(ctx context.Context, client docker.Client, containerID,
 
 		var count strings.Builder
 		result, err := client.ExecInContainer(ctx, containerID, docker.ExecRequest{
-			Cmd: []string{"psql", "-U", "postgres", "-d", database, "-t", "-A", "-c",
+			Cmd: []string{"psql", "-U", user, "-d", database, "-t", "-A", "-c",
 				"select count(*) from pg_tables where schemaname not in ('pg_catalog','information_schema')"},
 			Stdout: &count,
 		})

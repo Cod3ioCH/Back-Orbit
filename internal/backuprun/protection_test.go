@@ -16,7 +16,7 @@ func TestReplayCommandIsWrittenForThePersonRestoring(t *testing.T) {
 		"postgresql": {
 			dump: DatabaseDump{Technology: "postgresql", Service: "db", User: "app",
 				Level: ProtectionExported, Path: "back-orbit-dumps/db-postgresql.sql"},
-			want: []string{"docker compose exec", "db", "psql", "-U app", "db-postgresql.sql"},
+			want: []string{"docker compose exec", "db", "psql", "-U app", "-d postgres", "db-postgresql.sql"},
 		},
 		"mysql": {
 			dump: DatabaseDump{Technology: "mysql", Service: "shop", User: "root",
