@@ -45,6 +45,20 @@ func TestRegisterAndList(t *testing.T) {
 	}
 }
 
+func TestRegisterDetectsComposeOverrides(t *testing.T) {
+	svc := newTestService(t, nil)
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "compose.yml"), "services: {}")
+	writeFile(t, filepath.Join(dir, "compose.production.yaml"), "services: {}")
+	record, err := svc.Register(context.Background(), "actor-1", "overrides", dir)
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if len(record.ComposeFiles) != 2 {
+		t.Fatalf("expected base and override Compose files, got %#v", record.ComposeFiles)
+	}
+}
+
 func TestRegisterRejectsRelativePath(t *testing.T) {
 	svc := newTestService(t, nil)
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -203,6 +204,22 @@ func detectComposeFiles(dir string) []string {
 			files = append(files, name)
 		}
 	}
+	for name := range found {
+		lower := strings.ToLower(name)
+		if (strings.HasPrefix(lower, "compose.") || strings.HasPrefix(lower, "docker-compose.")) &&
+			(strings.HasSuffix(lower, ".yml") || strings.HasSuffix(lower, ".yaml")) {
+			files = appendUniqueString(files, name)
+		}
+	}
 	sort.Strings(files)
 	return files
+}
+
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }

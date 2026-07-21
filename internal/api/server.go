@@ -19,6 +19,7 @@ import (
 	"github.com/Cod3ioCH/Back-Orbit/internal/config"
 	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
 	"github.com/Cod3ioCH/Back-Orbit/internal/events"
+	"github.com/Cod3ioCH/Back-Orbit/internal/projectanalyzer"
 	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 	"github.com/Cod3ioCH/Back-Orbit/internal/repositories"
 	"github.com/Cod3ioCH/Back-Orbit/internal/secrets"
@@ -48,6 +49,7 @@ type Server struct {
 
 	dockerClient docker.Client
 	projects     *projects.Service
+	analyzer     *projectanalyzer.Service
 
 	secrets      *secrets.Store
 	repositories *repositories.Service
@@ -86,6 +88,7 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 	engine := backup.NewResticEngine("")
 
 	projectService := projects.NewService(db, dockerClient, recorder)
+	analyzerService := projectanalyzer.NewService(db, projectService, dockerClient, recorder)
 	repositoryService := repositories.NewService(db, secretStore, engine, recorder,
 		repositories.NewLocations(cfg.DataDir, cfg.BackupDir))
 
@@ -106,6 +109,7 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 		rateLimiter:  auth.NewLoginRateLimiter(loginMaxAttempts, loginWindow, loginMaxBackoff),
 		dockerClient: dockerClient,
 		projects:     projectService,
+		analyzer:     analyzerService,
 		secrets:      secretStore,
 		repositories: repositoryService,
 		backups: backuprun.NewRunner(db, projectService, repositoryService, stager, engine, recorder,
@@ -169,6 +173,9 @@ func (s *Server) Router() http.Handler {
 			r.Post("/projects", s.handleRegisterProject)
 			r.Post("/projects/scan", s.handleScanProjects)
 			r.Get("/projects/{id}", s.handleGetProject)
+			r.Get("/projects/{id}/blueprint", s.handleGetProjectBlueprint)
+			r.Post("/projects/{id}/analyze", s.handleAnalyzeProject)
+			r.Post("/projects/{id}/blueprint/confirm", s.handleConfirmProjectBlueprint)
 			r.Post("/projects/{id}/backup", s.handleStartBackup)
 
 			r.Route("/backups", func(r chi.Router) {

@@ -152,6 +152,38 @@ export interface ProjectDetail extends ProjectRecord {
   sources: BackupSource[];
 }
 
+export type AnalyzerConfidence = "confirmed" | "probable" | "possible";
+
+export interface BlueprintEvidence {
+  source: string;
+  subject: string;
+  detail: string;
+}
+
+export interface BlueprintFinding {
+  id: string;
+  kind: "database" | "storage" | "secret" | "configuration" | string;
+  technology: string;
+  service?: string;
+  confidence: AnalyzerConfidence;
+  evidence: BlueprintEvidence[];
+  recommendation: string;
+  consistency: "crash-consistent" | "filesystem-consistent" | "application-consistent" | string;
+  warnings?: string[];
+}
+
+export interface ProtectionBlueprint {
+  schemaVersion: number;
+  projectId: string;
+  fingerprint: string;
+  analyzedAt: string;
+  confirmedAt?: string;
+  drifted: boolean;
+  findings: BlueprintFinding[];
+  steps: { order: number; action: string; description: string }[];
+  warnings: string[];
+}
+
 export interface AuditEvent {
   id: string;
   action: string;
@@ -328,6 +360,12 @@ export const api = {
 
   listProjects: () => request<ProjectRecord[]>("/api/v1/projects"),
   getProject: (id: string) => request<ProjectDetail>(`/api/v1/projects/${id}`),
+  getProjectBlueprint: (id: string) =>
+    request<ProtectionBlueprint>(`/api/v1/projects/${id}/blueprint`),
+  analyzeProject: (id: string) =>
+    request<ProtectionBlueprint>(`/api/v1/projects/${id}/analyze`, { method: "POST" }),
+  confirmProjectBlueprint: (id: string) =>
+    request<ProtectionBlueprint>(`/api/v1/projects/${id}/blueprint/confirm`, { method: "POST" }),
   registerProject: (name: string, path: string) =>
     request<ProjectRecord>("/api/v1/projects", {
       method: "POST",

@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/Cod3ioCH/Back-Orbit/internal/auth"
+	"github.com/Cod3ioCH/Back-Orbit/internal/projectanalyzer"
 	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 )
 
@@ -18,6 +19,47 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, records)
+}
+
+func (s *Server) handleGetProjectBlueprint(w http.ResponseWriter, r *http.Request) {
+	bp, err := s.analyzer.Get(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		if errors.Is(err, projectanalyzer.ErrBlueprintNotFound) {
+			writeError(w, http.StatusNotFound, "project has not been analyzed")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to load project blueprint")
+		return
+	}
+	writeJSON(w, http.StatusOK, bp)
+}
+
+func (s *Server) handleAnalyzeProject(w http.ResponseWriter, r *http.Request) {
+	user, _ := auth.UserFromContext(r.Context())
+	bp, err := s.analyzer.Analyze(r.Context(), chi.URLParam(r, "id"), user.ID)
+	if err != nil {
+		if errors.Is(err, projects.ErrProjectNotFound) {
+			writeError(w, http.StatusNotFound, "project not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to analyze project")
+		return
+	}
+	writeJSON(w, http.StatusOK, bp)
+}
+
+func (s *Server) handleConfirmProjectBlueprint(w http.ResponseWriter, r *http.Request) {
+	user, _ := auth.UserFromContext(r.Context())
+	bp, err := s.analyzer.Confirm(r.Context(), chi.URLParam(r, "id"), user.ID)
+	if err != nil {
+		if errors.Is(err, projectanalyzer.ErrBlueprintNotFound) {
+			writeError(w, http.StatusNotFound, "project has not been analyzed")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to confirm project blueprint")
+		return
+	}
+	writeJSON(w, http.StatusOK, bp)
 }
 
 func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {

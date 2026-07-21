@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -157,12 +159,30 @@ func TestFullSetupLoginProjectFlow(t *testing.T) {
 	}
 
 	// Register a project.
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yml"), []byte("services:\n  db:\n    image: postgres:17\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	resp = client.do(http.MethodPost, "/api/v1/projects", map[string]string{
 		"name": "myproject",
-		"path": t.TempDir(),
+		"path": projectDir,
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201 registering project, got %d", resp.StatusCode)
+	}
+	registered := decodeBody[map[string]any](t, resp)
+	projectID, _ := registered["id"].(string)
+	resp = client.do(http.MethodPost, "/api/v1/projects/"+projectID+"/analyze", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 analyzing project, got %d", resp.StatusCode)
+	}
+	blueprint := decodeBody[map[string]any](t, resp)
+	if findings, ok := blueprint["findings"].([]any); !ok || len(findings) == 0 {
+		t.Fatalf("expected analyzer findings, got %#v", blueprint)
+	}
+	resp = client.do(http.MethodPost, "/api/v1/projects/"+projectID+"/blueprint/confirm", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 confirming blueprint, got %d", resp.StatusCode)
 	}
 	resp.Body.Close()
 

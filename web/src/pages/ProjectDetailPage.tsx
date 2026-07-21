@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
@@ -7,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ComingSoon } from "@/components/ComingSoon";
 import { BackupPanel } from "@/components/BackupPanel";
+import { ProtectionBlueprint } from "@/components/ProtectionBlueprint";
+import { ProtectionSummary } from "@/components/ProtectionSummary";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Timestamp } from "@/components/Timestamp";
 import { api } from "@/lib/api";
@@ -24,6 +27,7 @@ const PLACEHOLDER_TABS = [
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [activeTab, setActiveTab] = useState("overview");
   const query = useQuery({
     queryKey: ["project", id],
     queryFn: () => api.getProject(id!),
@@ -70,9 +74,10 @@ export function ProjectDetailPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="blueprint">Blueprint</TabsTrigger>
           {/* Only Overview carries real data in this phase; the rest are
               dimmed so the tab bar says what is ready instead of making
               people find out by clicking. */}
@@ -89,6 +94,8 @@ export function ProjectDetailPage() {
               <AlertDescription>{project.dockerWarning}</AlertDescription>
             </Alert>
           )}
+
+          <ProtectionSummary projectId={project.id} onOpenBlueprint={() => setActiveTab("blueprint")} />
 
           {/* First on the page: whether this project is backed up is the
               question someone opens it to answer. */}
@@ -207,6 +214,10 @@ export function ProjectDetailPage() {
               </p>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="blueprint">
+          <ProtectionBlueprint projectId={project.id} />
         </TabsContent>
 
         <TabsContent value="configuration">
