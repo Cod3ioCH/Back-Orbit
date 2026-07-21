@@ -7,7 +7,10 @@ const STATUS_STYLES: Record<ProjectStatus, string> = {
   running: "bg-success/15 text-success border-success/30",
   warning: "bg-warning/15 text-warning border-warning/30",
   paused: "bg-muted text-muted-foreground border-border",
-  unprotected: "bg-muted text-muted-foreground border-border",
+  // "Unprotected" means nothing is backed up — a risk state, not a neutral
+  // one. Styling it like a disabled chip understated the single most
+  // important thing this product reports.
+  unprotected: "bg-warning/15 text-warning border-warning/30",
   failed: "bg-destructive/15 text-destructive border-destructive/30",
 };
 

@@ -52,8 +52,12 @@ export function SetupPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
-        <CardHeader className="items-center text-center">
-          <OrbitIcon className="mb-2 size-8 text-primary" aria-hidden="true" />
+        {/* See LoginPage: CardHeader is a grid, so the icon needs its own
+            centering wrapper to line up with the centred text. */}
+        <CardHeader className="text-center">
+          <div className="flex justify-center">
+            <OrbitIcon className="mb-2 size-8 text-primary" aria-hidden="true" />
+          </div>
           <CardTitle>Welcome to Back-Orbit</CardTitle>
           <CardDescription>
             Create the administrator account to get started.

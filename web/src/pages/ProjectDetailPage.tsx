@@ -7,8 +7,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ComingSoon } from "@/components/ComingSoon";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Timestamp } from "@/components/Timestamp";
 import { api } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { cn } from "@/lib/utils";
+
+const PLACEHOLDER_TABS = [
+  { value: "configuration", label: "Configuration" },
+  { value: "volumes", label: "Volumes" },
+  { value: "databases", label: "Databases" },
+  { value: "snapshots", label: "Snapshots" },
+  { value: "activity", label: "Activity" },
+  { value: "settings", label: "Settings" },
+] as const;
 
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +28,8 @@ export function ProjectDetailPage() {
     queryFn: () => api.getProject(id!),
     enabled: !!id,
   });
+
+  usePageTitle(query.data?.name);
 
   if (query.isLoading) {
     return (
@@ -59,12 +72,14 @@ export function ProjectDetailPage() {
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="configuration">Configuration</TabsTrigger>
-          <TabsTrigger value="volumes">Volumes</TabsTrigger>
-          <TabsTrigger value="databases">Databases</TabsTrigger>
-          <TabsTrigger value="snapshots">Snapshots</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+          {/* Only Overview carries real data in this phase; the rest are
+              dimmed so the tab bar says what is ready instead of making
+              people find out by clicking. */}
+          {PLACEHOLDER_TABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="opacity-60">
+              {tab.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -88,15 +103,30 @@ export function ProjectDetailPage() {
               ) : (
                 <ul className="divide-y">
                   {project.containers.map((c) => (
-                    <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                      <div>
-                        <div className="font-medium">{c.name}</div>
-                        <div className="text-xs text-muted-foreground">
+                    <li
+                      key={c.id}
+                      className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{c.name}</div>
+                        <div className="truncate text-xs text-muted-foreground">
                           {c.service && `${c.service} · `}
                           {c.image}
                         </div>
                       </div>
-                      <div className="text-xs text-muted-foreground">{c.status || c.state}</div>
+                      {/* A coloured dot makes container health scannable at a
+                          glance; previously running and stopped containers were
+                          both just grey text. */}
+                      <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                        <span
+                          className={cn(
+                            "size-2 rounded-full",
+                            c.state === "running" ? "bg-success" : "bg-muted-foreground/40",
+                          )}
+                          aria-hidden="true"
+                        />
+                        {c.status || c.state}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -160,9 +190,15 @@ export function ProjectDetailPage() {
                   ))}
                 </ul>
               )}
-              <p className="mt-3 text-xs text-muted-foreground">
-                Registered {formatDateTime(project.createdAt)} · Last updated{" "}
-                {formatDateTime(project.updatedAt)}
+              <p className="mt-3 flex flex-wrap gap-x-1 text-xs text-muted-foreground">
+                <span>Registered</span>
+                <Timestamp iso={project.createdAt} />
+                {project.updatedAt !== project.createdAt && (
+                  <>
+                    <span>· updated</span>
+                    <Timestamp iso={project.updatedAt} />
+                  </>
+                )}
               </p>
             </CardContent>
           </Card>

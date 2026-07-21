@@ -46,8 +46,13 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
-        <CardHeader className="items-center text-center">
-          <OrbitIcon className="mb-2 size-8 text-primary" aria-hidden="true" />
+        {/* The icon needs its own centering wrapper: CardHeader lays its
+            children out in a grid, so `items-center` alone left-aligned the
+            icon while the text was centred. */}
+        <CardHeader className="text-center">
+          <div className="flex justify-center">
+            <OrbitIcon className="mb-2 size-8 text-primary" aria-hidden="true" />
+          </div>
           <CardTitle>Sign in to Back-Orbit</CardTitle>
           <CardDescription>Enter your administrator credentials.</CardDescription>
         </CardHeader>

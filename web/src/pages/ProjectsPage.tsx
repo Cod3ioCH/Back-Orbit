@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createColumnHelper,
@@ -10,7 +10,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, FolderKanban, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -35,9 +35,12 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
-import { DockerStatusBanner } from "@/components/DockerStatusBanner";
+import { DockerUnreachableAlert } from "@/components/DockerStatus";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { Timestamp } from "@/components/Timestamp";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { api, ApiError, type ProjectRecord } from "@/lib/api";
-import { formatRelativeTime } from "@/lib/format";
 
 const registerSchema = z.object({
   name: z.string().min(1, "Required").max(128),
@@ -52,11 +55,7 @@ const columnHelper = createColumnHelper<ProjectRecord>();
 const columns = [
   columnHelper.accessor("name", {
     header: "Name",
-    cell: (info) => (
-      <Link to={`/projects/${info.row.original.id}`} className="font-medium hover:underline">
-        {info.getValue()}
-      </Link>
-    ),
+    cell: (info) => <span className="font-medium">{info.getValue()}</span>,
   }),
   columnHelper.accessor("status", {
     header: "Status",
@@ -71,19 +70,36 @@ const columns = [
   columnHelper.accessor("composePath", {
     header: "Compose path",
     cell: (info) => (
-      <span className="font-mono text-xs text-muted-foreground">{info.getValue() || "—"}</span>
+      // Paths are often long; truncate with the full value on hover so one
+      // deep path cannot push the rest of the row out of view.
+      <span
+        title={info.getValue() || undefined}
+        className="block max-w-[22rem] truncate font-mono text-xs text-muted-foreground"
+      >
+        {info.getValue() || "—"}
+      </span>
     ),
   }),
   columnHelper.accessor("updatedAt", {
     header: "Updated",
     cell: (info) => (
-      <span className="text-muted-foreground">{formatRelativeTime(info.getValue())}</span>
+      <Timestamp iso={info.getValue()} className="text-sm text-muted-foreground" />
+    ),
+  }),
+  columnHelper.display({
+    id: "go",
+    header: "",
+    cell: () => (
+      <ChevronRight className="size-4 text-muted-foreground/50" aria-hidden="true" />
     ),
   }),
 ];
 
 export function ProjectsPage() {
+  usePageTitle("Projects");
+
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
@@ -125,22 +141,19 @@ export function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-          <p className="text-sm text-muted-foreground">
-            Docker Compose projects Back-Orbit has discovered or that were registered manually.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => scanMutation.mutate()}
-            disabled={scanMutation.isPending}
-          >
-            <RefreshCw className={scanMutation.isPending ? "size-4 animate-spin" : "size-4"} />
-            Scan for projects
-          </Button>
+      <PageHeader
+        title="Projects"
+        description="Docker Compose projects Back-Orbit has discovered or that were registered manually."
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => scanMutation.mutate()}
+              disabled={scanMutation.isPending}
+            >
+              <RefreshCw className={scanMutation.isPending ? "size-4 animate-spin" : "size-4"} />
+              Scan for projects
+            </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger render={<Button />}>
               <Plus className="size-4" />
@@ -190,10 +203,11 @@ export function ProjectsPage() {
               </form>
             </DialogContent>
           </Dialog>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <DockerStatusBanner />
+      <DockerUnreachableAlert />
 
       <div className="rounded-lg border">
         <Table>
@@ -222,14 +236,36 @@ export function ProjectsPage() {
                 </TableRow>
               ))
             ) : table.getRowModel().rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
-                  No projects yet. Scan for running Compose projects or register one manually.
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={columns.length} className="p-0">
+                  <EmptyState
+                    icon={FolderKanban}
+                    title="No projects yet"
+                    description="Scan to discover Compose projects running on this host, or register a project directory manually."
+                    action={
+                      <Button
+                        variant="outline"
+                        onClick={() => scanMutation.mutate()}
+                        disabled={scanMutation.isPending}
+                      >
+                        <RefreshCw
+                          className={scanMutation.isPending ? "size-4 animate-spin" : "size-4"}
+                        />
+                        Scan for projects
+                      </Button>
+                    }
+                  />
                 </TableCell>
               </TableRow>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                // The whole row navigates, not just the name: a 5-column row
+                // whose only target was one word made the table feel inert.
+                <TableRow
+                  key={row.id}
+                  onClick={() => navigate(`/projects/${row.original.id}`)}
+                  className="cursor-pointer"
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

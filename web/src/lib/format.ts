@@ -25,10 +25,15 @@ export function formatRelativeTime(iso: string): string {
   return "just now";
 }
 
+const absoluteFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 export function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
     return "unknown";
   }
-  return date.toLocaleString();
+  return absoluteFormatter.format(date);
 }
