@@ -30,6 +30,17 @@ type Finding struct {
 	Recommendation string     `json:"recommendation"`
 	Consistency    string     `json:"consistency"`
 	Warnings       []string   `json:"warnings,omitempty"`
+	// DataMount is where this database keeps its files, when that could be
+	// established. It is what lets a dump-aware backup connect a database to
+	// the storage behind it instead of treating the two as unrelated findings.
+	DataMount *DataMount `json:"dataMount,omitempty"`
+}
+
+// DataMount identifies the storage holding a database's files.
+type DataMount struct {
+	Type   string `json:"type"`
+	Source string `json:"source"`
+	Target string `json:"target"`
 }
 
 type Step struct {

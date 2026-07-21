@@ -12,48 +12,159 @@ func (databaseDetector) ID() string { return "databases" }
 
 type databaseSignature struct {
 	technology, method, consistency string
-	images, services, env           []string
+	images, env                     []string
+	// dataDirs are the paths the engine keeps its files in. A service mounting
+	// one of these is storing that engine's data — which is the thing a backup
+	// actually cares about, and far stronger evidence than a name.
+	dataDirs []string
+	// genericDataDir marks a data directory too common to mean anything on its
+	// own. "/data" is used by Redis, Valkey and half the images on Docker Hub;
+	// "/var/lib/postgresql/data" is used by PostgreSQL.
+	genericDataDir bool
 }
 
 var databaseSignatures = []databaseSignature{
-	{"postgresql", "Create a logical dump with pg_dump before snapshotting persistent storage.", "application-consistent", []string{"postgres", "timescale"}, []string{"postgres", "database", "db"}, []string{"POSTGRES_DB", "POSTGRES_USER", "PGDATA"}},
-	{"mariadb", "Create a logical dump with mariadb-dump before snapshotting persistent storage.", "application-consistent", []string{"mariadb"}, []string{"mariadb"}, []string{"MARIADB_DATABASE", "MARIADB_USER"}},
-	{"mysql", "Create a logical dump with mysqldump before snapshotting persistent storage.", "application-consistent", []string{"mysql", "percona"}, []string{"mysql"}, []string{"MYSQL_DATABASE", "MYSQL_USER"}},
-	{"mongodb", "Create a logical dump with mongodump; use replica-set aware options when available.", "application-consistent", []string{"mongo"}, []string{"mongo"}, []string{"MONGO_INITDB_DATABASE", "MONGO_INITDB_ROOT_USERNAME"}},
-	{"valkey", "Persist data with a controlled SAVE/BGSAVE and capture the configured data directory.", "application-consistent", []string{"valkey"}, []string{"valkey"}, []string{}},
-	{"redis", "Confirm whether Redis is durable or cache-only; for durable data run a controlled BGSAVE and capture RDB/AOF files.", "application-consistent", []string{"redis"}, []string{"redis", "cache"}, []string{}},
+	{technology: "postgresql", method: "Create a logical dump with pg_dump before snapshotting persistent storage.", consistency: "application-consistent",
+		images: []string{"postgres", "timescale"}, env: []string{"POSTGRES_DB", "POSTGRES_USER", "PGDATA"},
+		dataDirs: []string{"/var/lib/postgresql/data", "/var/lib/postgresql"}},
+	{technology: "mariadb", method: "Create a logical dump with mariadb-dump before snapshotting persistent storage.", consistency: "application-consistent",
+		images: []string{"mariadb"}, env: []string{"MARIADB_DATABASE", "MARIADB_USER"},
+		dataDirs: []string{"/var/lib/mysql"}},
+	{technology: "mysql", method: "Create a logical dump with mysqldump before snapshotting persistent storage.", consistency: "application-consistent",
+		images: []string{"mysql", "percona"}, env: []string{"MYSQL_DATABASE", "MYSQL_USER"},
+		dataDirs: []string{"/var/lib/mysql"}},
+	{technology: "mongodb", method: "Create a logical dump with mongodump; use replica-set aware options when available.", consistency: "application-consistent",
+		images: []string{"mongo"}, env: []string{"MONGO_INITDB_DATABASE", "MONGO_INITDB_ROOT_USERNAME"},
+		dataDirs: []string{"/data/db"}},
+	{technology: "valkey", method: "Persist data with a controlled SAVE/BGSAVE and capture the configured data directory.", consistency: "application-consistent",
+		images: []string{"valkey"}, dataDirs: []string{"/data"}, genericDataDir: true},
+	{technology: "redis", method: "Confirm whether Redis is durable or cache-only; for durable data run a controlled BGSAVE and capture RDB/AOF files.", consistency: "application-consistent",
+		images: []string{"redis"}, dataDirs: []string{"/data"}, genericDataDir: true},
+}
+
+// dataMountFor returns the mount holding this engine's files, if the service
+// declares one.
+func dataMountFor(svc ServiceEvidence, sig databaseSignature) *MountEvidence {
+	for i, mount := range svc.Mounts {
+		target := strings.TrimSuffix(mount.Target, "/")
+		for _, dir := range sig.dataDirs {
+			if target == strings.TrimSuffix(dir, "/") {
+				return &svc.Mounts[i]
+			}
+		}
+	}
+	return nil
+}
+
+// detectDatabase decides whether a service stores this engine's data, and how
+// sure that is.
+//
+// Confidence is earned from the *kind* of evidence, never from how many weak
+// hints happen to stack up. The rules exist because the previous ones produced
+// confident nonsense: a Prometheus postgres-exporter was reported as a
+// confirmed PostgreSQL database to be dumped, a MySQL service named "db" also
+// became a possible PostgreSQL, and a memcached named "cache" became Redis.
+// Each of those turns a backup plan into a guess, and a wrong "confirmed" is
+// worse than an honest gap.
+//
+// A service name is deliberately not evidence of a technology at all. "db"
+// says a database is likely; it does not say which engine, and inventing one
+// is a guess dressed up as a finding.
+func detectDatabase(svc ServiceEvidence, sig databaseSignature) (Finding, bool) {
+	imageMatch := containsAny(strings.ToLower(svc.Image), sig.images)
+	dataMount := dataMountFor(svc, sig)
+
+	var (
+		evidence   []Evidence
+		confidence Confidence
+	)
+
+	// Confidence answers one question only: how sure are we that this service
+	// *is* this engine. Whether its data can actually be reached is a separate
+	// concern, carried by DataMount and its warning — conflating the two would
+	// downgrade a certain PostgreSQL to "probable" merely because its volume is
+	// declared elsewhere.
+	switch {
+	case imageMatch && (dataMount != nil || hasAny(svc.EnvironmentNames, sig.env)):
+		// The image names the engine and something independent corroborates it:
+		// either it stores the engine's files or it is configured like it.
+		confidence = ConfidenceConfirmed
+	case dataMount != nil && !sig.genericDataDir:
+		// A custom image can still be caught by where it keeps its data.
+		confidence = ConfidenceProbable
+	case imageMatch:
+		// The image name mentions the engine and nothing corroborates it. True
+		// for a real database whose volume is declared elsewhere, and equally
+		// true for an exporter, a migration tool or a backup sidecar.
+		confidence = ConfidencePossible
+	default:
+		return Finding{}, false
+	}
+
+	if imageMatch {
+		evidence = append(evidence, Evidence{Source: "compose", Subject: svc.Name,
+			Detail: "image " + svc.Image + " matches " + sig.technology})
+	}
+	if dataMount != nil {
+		evidence = append(evidence, Evidence{Source: "compose", Subject: svc.Name,
+			Detail: fmt.Sprintf("%s is mounted at %s, where %s keeps its data",
+				dataMount.Source, dataMount.Target, sig.technology)})
+	}
+	for _, env := range svc.EnvironmentNames {
+		if equalAny(env, sig.env) {
+			evidence = append(evidence, Evidence{Source: "compose", Subject: svc.Name,
+				Detail: "environment key " + env + " is present"})
+		}
+	}
+
+	warnings := []string{}
+	if sig.technology == "redis" || sig.technology == "valkey" {
+		warnings = append(warnings, "Persistence and cache-only intent cannot be inferred safely; confirm before enabling backup.")
+	}
+	if confidence == ConfidencePossible {
+		warnings = append(warnings, "Only the image name suggests this. Tools such as exporters, "+
+			"migration jobs and backup sidecars carry the engine's name without holding its data — "+
+			"confirm before treating this as a database.")
+	}
+	if dataMount == nil && confidence != ConfidencePossible {
+		warnings = append(warnings, "No data directory for this engine was found among the declared "+
+			"mounts, so its files may not be captured by a storage backup at all.")
+	}
+
+	finding := Finding{
+		ID: "database:" + svc.Name + ":" + sig.technology, Kind: "database",
+		Technology: sig.technology, Service: svc.Name, Confidence: confidence,
+		Evidence: evidence, Recommendation: sig.method, Consistency: sig.consistency,
+		Warnings: warnings,
+	}
+	if dataMount != nil {
+		finding.DataMount = &DataMount{Type: dataMount.Type, Source: dataMount.Source, Target: dataMount.Target}
+	}
+	return finding, true
 }
 
 func (databaseDetector) Detect(input Input) []Finding {
 	var findings []Finding
 	for _, svc := range input.Services {
+		// When the image names an engine, that engine wins. MySQL and MariaDB
+		// share /var/lib/mysql, so without this a MySQL service also reports a
+		// probable MariaDB sitting on the same files — two databases where
+		// there is one, and a backup plan that would dump the wrong one.
+		imageIdentified := false
 		for _, sig := range databaseSignatures {
-			evidence := []Evidence{}
 			if containsAny(strings.ToLower(svc.Image), sig.images) {
-				evidence = append(evidence, Evidence{Source: "compose", Subject: svc.Name, Detail: "image matches " + sig.technology})
+				imageIdentified = true
+				break
 			}
-			if containsAny(strings.ToLower(svc.Name), sig.services) {
-				evidence = append(evidence, Evidence{Source: "compose", Subject: svc.Name, Detail: "service name suggests " + sig.technology})
-			}
-			for _, env := range svc.EnvironmentNames {
-				if equalAny(env, sig.env) {
-					evidence = append(evidence, Evidence{Source: "compose", Subject: svc.Name, Detail: "environment key " + env + " is present"})
-				}
-			}
-			if len(evidence) == 0 {
+		}
+
+		for _, sig := range databaseSignatures {
+			if imageIdentified && !containsAny(strings.ToLower(svc.Image), sig.images) {
 				continue
 			}
-			confidence := ConfidencePossible
-			if containsAny(strings.ToLower(svc.Image), sig.images) {
-				confidence = ConfidenceConfirmed
-			} else if len(evidence) > 1 {
-				confidence = ConfidenceProbable
+			if finding, found := detectDatabase(svc, sig); found {
+				findings = append(findings, finding)
 			}
-			warnings := []string{}
-			if sig.technology == "redis" || sig.technology == "valkey" {
-				warnings = append(warnings, "Persistence and cache-only intent cannot be inferred safely; confirm before enabling backup.")
-			}
-			findings = append(findings, Finding{ID: "database:" + svc.Name + ":" + sig.technology, Kind: "database", Technology: sig.technology, Service: svc.Name, Confidence: confidence, Evidence: evidence, Recommendation: sig.method, Consistency: sig.consistency, Warnings: warnings})
 		}
 	}
 	for _, path := range input.SQLite {
@@ -64,6 +175,15 @@ func (databaseDetector) Detect(input Input) []Finding {
 		findings = append(findings, Finding{ID: "database:sqlite:" + path, Kind: "database", Technology: "sqlite", Confidence: ConfidenceConfirmed, Evidence: []Evidence{{Source: source, Subject: path, Detail: detail}}, Recommendation: "Use the SQLite online backup API or VACUUM INTO and include WAL/SHM handling before snapshotting.", Consistency: "application-consistent"})
 	}
 	return deduplicate(findings)
+}
+
+func hasAny(values, wanted []string) bool {
+	for _, value := range values {
+		if equalAny(value, wanted) {
+			return true
+		}
+	}
+	return false
 }
 
 type storageDetector struct{}
