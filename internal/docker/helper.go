@@ -23,8 +23,14 @@ func (c *sdkClient) CreateHelperContainer(ctx context.Context, req HelperContain
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
-	if req.Image == "" || req.Source == "" || req.MountPath == "" {
-		return "", fmt.Errorf("docker: helper container needs an image, a source and a mount path")
+	if req.Image == "" {
+		return "", fmt.Errorf("docker: helper container needs an image")
+	}
+	// A source is optional. A throwaway database used to prove a dump can be
+	// loaded back mounts nothing at all: its data lives in the container's own
+	// layer and disappears with it, which is the point.
+	if (req.Source == "") != (req.MountPath == "") {
+		return "", fmt.Errorf("docker: a helper container needs both a source and a mount path, or neither")
 	}
 	if err := checkHelperSource(req.Source); err != nil {
 		return "", err
@@ -56,12 +62,26 @@ func (c *sdkClient) CreateHelperContainer(ctx context.Context, req HelperContain
 			HelperContainerLabel: req.Purpose,
 		},
 		"HostConfig": map[string]any{
-			"Binds":      []string{req.Source + ":" + req.MountPath + ":" + mode},
 			"AutoRemove": false,
-			// No network, in every case. A helper reads files; anything it
-			// could reach over a network it has no business reaching.
+			// No network, in every case. A helper reads files or talks to
+			// itself; anything it could reach over a network it has no
+			// business reaching.
 			"NetworkMode": "none",
 		},
+	}
+	if req.Source != "" {
+		body["HostConfig"].(map[string]any)["Binds"] =
+			[]string{req.Source + ":" + req.MountPath + ":" + mode}
+	}
+	if len(req.Env) > 0 {
+		body["Env"] = req.Env
+	}
+
+	if req.Server {
+		// Let the image start the way it was built to. Overriding the
+		// entrypoint here would start a database that never initialises.
+		delete(body, "Entrypoint")
+		delete(body, "Cmd")
 	}
 
 	payload, err := json.Marshal(body)
@@ -232,6 +252,9 @@ var dangerousBindSources = []string{
 // checkHelperSource rejects a bind source that must not be mounted. A named
 // volume (no leading slash) is always allowed.
 func checkHelperSource(source string) error {
+	if source == "" {
+		return nil // nothing mounted
+	}
 	if !strings.HasPrefix(source, "/") {
 		return nil // a named volume
 	}

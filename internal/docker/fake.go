@@ -39,12 +39,17 @@ type FakeClient struct {
 	RunErr        error
 	// ExecCalls records every command run inside a container, so a test can
 	// assert what a dump actually asked the database to do.
-	ExecCalls      []ExecRequest
-	ExecStdout     []byte
-	ExecResult     ExecResult
-	ExecErr        error
-	EnvValues      map[string]string
-	liveContainers map[string]bool
+	ExecCalls []ExecRequest
+	// ExecStdin holds what each call wrote to standard input, in the same
+	// order as ExecCalls.
+	ExecStdin         [][]byte
+	ExecStdout        []byte
+	ExecResult        ExecResult
+	ExecErr           error
+	EnvValues         map[string]string
+	StartedContainers []string
+	StartErr          error
+	liveContainers    map[string]bool
 }
 
 // NewFakeClient creates a FakeClient reporting a connected status by
@@ -97,10 +102,14 @@ func (f *FakeClient) ExecInContainer(ctx context.Context, containerID string, re
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// The stdin bytes are copied: a caller may reuse its buffer, and a test
-	// asserting on a password would otherwise see whatever came last.
-	if len(req.Stdin) > 0 {
-		req.Stdin = append([]byte(nil), req.Stdin...)
+	// Stdin is drained into a record: a test needs to see what was sent, and
+	// the reader is consumed either way.
+	if req.Stdin != nil {
+		sent, _ := io.ReadAll(req.Stdin)
+		f.ExecStdin = append(f.ExecStdin, sent)
+		req.Stdin = bytes.NewReader(sent)
+	} else {
+		f.ExecStdin = append(f.ExecStdin, nil)
 	}
 	f.ExecCalls = append(f.ExecCalls, req)
 	if f.ExecErr != nil {
@@ -119,6 +128,14 @@ func (f *FakeClient) ContainerEnvValue(ctx context.Context, containerID, key str
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.EnvValues[key], nil
+}
+
+// StartContainer records the start of a long-running helper.
+func (f *FakeClient) StartContainer(ctx context.Context, containerID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.StartedContainers = append(f.StartedContainers, containerID)
+	return f.StartErr
 }
 
 // RunResult is what RunHelperContainer returns; RunErr overrides it.

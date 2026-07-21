@@ -299,6 +299,14 @@ export type ProtectionLevel = "exported" | "consistent" | "files_only";
  * `replay` is produced by the server so there is one source of truth for how a
  * dump is put back.
  */
+/** The outcome of loading an export back into a throwaway server. */
+export interface RestoreCheck {
+  loaded: boolean;
+  objects: number;
+  detail?: string;
+  durationMs: number;
+}
+
 export interface DatabaseDump {
   technology: string;
   service: string;
@@ -309,6 +317,9 @@ export interface DatabaseDump {
   bytes: number;
   note?: string;
   replay?: string;
+  /** Absent means the export was never test-restored, which differs from
+   *  having been tried and failed. */
+  restoreCheck?: RestoreCheck;
 }
 
 export interface BackupManifest {

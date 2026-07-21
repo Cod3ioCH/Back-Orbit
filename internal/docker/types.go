@@ -142,6 +142,11 @@ type Client interface {
 	// passwords, and returning all of it invites a caller to keep the lot.
 	ContainerEnvValue(ctx context.Context, containerID, key string) (string, error)
 
+	// StartContainer starts a container and returns without waiting for it to
+	// finish. Used for a throwaway database server, which is expected to keep
+	// running until it is removed.
+	StartContainer(ctx context.Context, containerID string) error
+
 	// RunHelperContainer starts a helper created with a Command and waits for
 	// it to finish, returning its exit code and output.
 	//
@@ -190,10 +195,21 @@ type HelperContainerRequest struct {
 	// storage.captureSQLite for why read-only cannot work there.
 	Writable bool
 
+	// Env configures the container. A throwaway database needs its own
+	// credentials; they are generated per run and never leave this process.
+	Env []string
+
 	// Command, when set, is executed in the container. Leaving it empty keeps
 	// the container inert: it is created and never started, so no process ever
 	// runs and the image's entrypoint is irrelevant.
 	Command []string
+
+	// Server runs the image the way it normally runs, entrypoint and all.
+	//
+	// The one use is a throwaway database started to prove a dump can be loaded
+	// back into it. Everything else stays inert, and the distinction is
+	// deliberately visible at the call site.
+	Server bool
 
 	// Purpose is recorded as a label, so an orphan can be explained rather
 	// than just found.

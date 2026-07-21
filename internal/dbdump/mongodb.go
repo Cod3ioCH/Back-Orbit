@@ -3,6 +3,7 @@ package dbdump
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +41,7 @@ func MongoDB(ctx context.Context, client docker.Client, target Target, stagingDi
 	}
 
 	command := []string{"mongodump", "--archive"}
-	var stdin []byte
+	var stdin io.Reader
 
 	user := strings.TrimSpace(target.User)
 	if user != "" {
@@ -58,7 +59,7 @@ func MongoDB(ctx context.Context, client docker.Client, target Target, stagingDi
 			// A single YAML key. The password is quoted so that a value
 			// containing a colon or a leading brace cannot change the
 			// document's shape.
-			stdin = []byte("password: " + quoteYAML(target.Password) + "\n")
+			stdin = strings.NewReader("password: " + quoteYAML(target.Password) + "\n")
 		}
 	}
 

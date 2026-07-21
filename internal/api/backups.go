@@ -16,6 +16,9 @@ import (
 
 type startBackupRequest struct {
 	RepositoryID string `json:"repositoryId"`
+	// VerifyRestores asks each database export to be loaded back into a
+	// throwaway server before the run is called done.
+	VerifyRestores bool `json:"verifyRestores"`
 }
 
 // handleStartBackup begins a backup and returns immediately with the run, so
@@ -33,10 +36,11 @@ func (s *Server) handleStartBackup(w http.ResponseWriter, r *http.Request) {
 
 	user, _ := auth.UserFromContext(r.Context())
 	run, err := s.backups.Start(r.Context(), backuprun.StartRequest{
-		ProjectID:    chi.URLParam(r, "id"),
-		RepositoryID: req.RepositoryID,
-		ActorUserID:  user.ID,
-		Trigger:      backuprun.TriggerManual,
+		ProjectID:      chi.URLParam(r, "id"),
+		RepositoryID:   req.RepositoryID,
+		ActorUserID:    user.ID,
+		Trigger:        backuprun.TriggerManual,
+		VerifyRestores: req.VerifyRestores,
 	})
 	if err != nil {
 		writeBackupError(w, err)

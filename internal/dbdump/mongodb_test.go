@@ -29,8 +29,8 @@ func TestMongoPasswordNeverReachesTheCommandLine(t *testing.T) {
 			t.Fatalf("the password appeared in argv: %v", call.Cmd)
 		}
 	}
-	if !strings.Contains(string(call.Stdin), "geheim123") {
-		t.Errorf("the password must be delivered on stdin, got %q", call.Stdin)
+	if !strings.Contains(string(client.ExecStdin[0]), "geheim123") {
+		t.Errorf("the password must be delivered on stdin, got %q", client.ExecStdin[0])
 	}
 	if !containsArg(call.Cmd, "/dev/stdin") {
 		t.Errorf("mongodump must be told to read its config from stdin: %v", call.Cmd)
@@ -50,8 +50,8 @@ func TestAnUnauthenticatedServerNeedsNoCredentials(t *testing.T) {
 	}
 
 	call := client.ExecCalls[0]
-	if len(call.Stdin) != 0 {
-		t.Errorf("no credentials means nothing on stdin, got %q", call.Stdin)
+	if len(client.ExecStdin[0]) != 0 {
+		t.Errorf("no credentials means nothing on stdin, got %q", client.ExecStdin[0])
 	}
 	for _, flag := range []string{"--username", "--config"} {
 		if containsArg(call.Cmd, flag) {
@@ -75,7 +75,7 @@ func TestAPasswordWithYAMLMetacharactersSurvives(t *testing.T) {
 				t.Fatalf("MongoDB: %v", err)
 			}
 
-			stdin := string(client.ExecCalls[0].Stdin)
+			stdin := string(client.ExecStdin[0])
 			if !strings.HasPrefix(stdin, "password: '") || !strings.HasSuffix(stdin, "'\n") {
 				t.Fatalf("the value must be quoted, got %q", stdin)
 			}

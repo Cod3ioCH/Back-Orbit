@@ -88,6 +88,10 @@ type StartRequest struct {
 	RepositoryID string
 	ActorUserID  string
 	Trigger      Trigger
+	// VerifyRestores loads each export back into a throwaway server before the
+	// run is called done. Off by default: it costs a database start per
+	// engine, which is not a price every backup should pay silently.
+	VerifyRestores bool
 }
 
 // Start begins a backup and returns as soon as it is under way.
@@ -149,6 +153,7 @@ func (r *Runner) Start(ctx context.Context, req StartRequest) (Run, error) {
 		Phase:          PhasePreparing,
 		Volumes:        volumes,
 		sources:        sources,
+		VerifyRestores: req.VerifyRestores,
 		Warnings:       []string{},
 		StartedAt:      now,
 		CreatedAt:      now,
@@ -333,7 +338,7 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 
 	// Export what can be exported, into the staged tree so the dump travels in
 	// the same snapshot as the files it was taken from.
-	dumps := r.dumpDatabases(ctx, &run, project, workDir)
+	dumps := r.dumpDatabases(ctx, &run, project, workDir, run.VerifyRestores)
 	if len(dumps) > 0 {
 		stagedPaths = append(stagedPaths, filepath.Join(workDir, "back-orbit-dumps"))
 		for _, dump := range dumps {

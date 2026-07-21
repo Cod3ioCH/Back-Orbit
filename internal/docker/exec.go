@@ -32,12 +32,15 @@ type ExecRequest struct {
 
 	// Stdin, when set, is written to the command's standard input.
 	//
-	// This exists for one reason: mongodump has no environment variable for a
-	// password, so its credentials are handed over as a config file on stdin.
+	// A reader rather than a buffer: this carries both a few bytes of database
+	// credentials and, when a dump is loaded back, a stream as large as the
+	// database itself.
+	//
+	// It exists because mongodump has no environment variable for a password.
 	// The alternatives were argv, which any process on the host can read
 	// through `ps`, and a temporary file in the container, which leaves the
 	// password on disk if the process dies before cleaning it up.
-	Stdin []byte
+	Stdin io.Reader
 
 	// Stdout receives the command's standard output as it arrives.
 	//
@@ -87,7 +90,7 @@ func (c *sdkClient) ExecInContainer(ctx context.Context, containerID string, req
 		create["Env"] = req.Env
 	}
 
-	if len(req.Stdin) > 0 {
+	if req.Stdin != nil {
 		create["AttachStdin"] = true
 	}
 
@@ -97,7 +100,7 @@ func (c *sdkClient) ExecInContainer(ctx context.Context, containerID string, req
 	}
 
 	var stderr string
-	if len(req.Stdin) > 0 {
+	if req.Stdin != nil {
 		stderr, err = c.startExecWithStdin(ctx, execID, req.Stdin, req.Stdout)
 	} else {
 		stderr, err = c.startExec(ctx, execID, req.Stdout)
@@ -289,7 +292,7 @@ func (c *sdkClient) ContainerEnvValue(ctx context.Context, containerID, key stri
 // Docker turns the HTTP connection into a raw bidirectional stream once the
 // request is accepted, which net/http's client cannot express — so the request
 // is written by hand over the socket the client already knows how to open.
-func (c *sdkClient) startExecWithStdin(ctx context.Context, execID string, stdin []byte, stdout io.Writer) (string, error) {
+func (c *sdkClient) startExecWithStdin(ctx context.Context, execID string, stdin io.Reader, stdout io.Writer) (string, error) {
 	if c.dial == nil {
 		return "", fmt.Errorf("docker: this Docker host does not support streaming input to a command")
 	}
@@ -335,7 +338,7 @@ func (c *sdkClient) startExecWithStdin(ctx context.Context, execID string, stdin
 	// The command is waiting on its input, so this goes first. Half-closing
 	// afterwards is what tells it there is no more to come — without that, a
 	// tool reading its configuration from stdin waits forever.
-	if _, err := conn.Write(stdin); err != nil {
+	if _, err := io.Copy(conn, stdin); err != nil {
 		return "", fmt.Errorf("docker: write command input: %w", err)
 	}
 	if halfCloser, ok := conn.(interface{ CloseWrite() error }); ok {
@@ -347,4 +350,28 @@ func (c *sdkClient) startExecWithStdin(ctx context.Context, execID string, stdin
 		return stderr.String(), fmt.Errorf("docker: read exec output: %w", err)
 	}
 	return stderr.String(), nil
+}
+
+// StartContainer starts a container without waiting for it to finish.
+func (c *sdkClient) StartContainer(ctx context.Context, containerID string) error {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/containers/"+containerID+"/start", nil)
+	if err != nil {
+		return fmt.Errorf("docker: build start request: %w", err)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("docker: start container: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("docker: start container returned %d: %s",
+			resp.StatusCode, strings.TrimSpace(string(detail)))
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
 }

@@ -35,6 +35,9 @@ var credentialKeys = map[string]struct{ user, password []string }{
 type dumpResult struct {
 	dbdump.Result
 	key string
+	// check is the outcome of loading this dump back into an empty server,
+	// when that was asked for.
+	check *dbdump.RestoreCheck
 }
 
 // dumpDatabases exports every detected database Back-Orbit can export, into
@@ -53,6 +56,7 @@ func (r *Runner) dumpDatabases(
 	run *Run,
 	project projects.Detail,
 	stagingDir string,
+	verifyRestores bool,
 ) []dumpResult {
 	if r.blueprints == nil || r.docker == nil || run.ProjectID == "" {
 		return nil
@@ -99,9 +103,33 @@ func (r *Runner) dumpDatabases(
 			continue
 		}
 
-		results = append(results, dumpResult{Result: result, key: finding.Service + ":" + finding.Technology})
+		entry := dumpResult{Result: result, key: finding.Service + ":" + finding.Technology}
+
+		// Proving the dump can be loaded back is the only thing that turns it
+		// from a plausible file into a backup. It costs a database start, so
+		// it is asked for rather than assumed.
+		if verifyRestores {
+			check, err := dbdump.VerifyRestorable(ctx, r.docker, container.Image, result, stagingDir)
+			switch {
+			case err != nil:
+				run.Warnings = append(run.Warnings, fmt.Sprintf(
+					"the %s export from %s could not be test-restored (%v), so it is unproven.",
+					finding.Technology, finding.Service, err))
+			case !check.Loaded:
+				run.Warnings = append(run.Warnings, fmt.Sprintf(
+					"the %s export from %s did not load into an empty server: %s. "+
+						"The file is in the snapshot, but it has not been shown to restore.",
+					finding.Technology, finding.Service, check.Detail))
+				entry.check = &check
+			default:
+				entry.check = &check
+			}
+		}
+
+		results = append(results, entry)
 		slog.Info("backuprun: database exported",
-			"run", run.ID, "service", finding.Service, "technology", finding.Technology, "bytes", result.Bytes)
+			"run", run.ID, "service", finding.Service, "technology", finding.Technology,
+			"bytes", result.Bytes, "restoreVerified", entry.check != nil && entry.check.Loaded)
 	}
 	return results
 }
@@ -182,6 +210,7 @@ func (r *Runner) manifestEntries(
 			Technology: dump.Technology, Service: dump.Service,
 			Level: ProtectionExported, Path: dump.Path,
 			Command: dump.Command, User: dump.User, Bytes: dump.Bytes,
+			RestoreCheck: dump.check,
 		})
 	}
 

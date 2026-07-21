@@ -107,6 +107,31 @@ function DatabaseRow({ database }: { database: DatabaseDump }) {
 
       <p className="mt-1.5 text-xs text-muted-foreground">{database.note || level.text}</p>
 
+      {/* Proven rather than assumed. An export that cannot be restored looks
+          exactly like one that can, so this is the only line here that
+          describes evidence instead of intent. */}
+      {database.restoreCheck && (
+        <p
+          className={cn(
+            "mt-1.5 flex items-start gap-1.5 text-xs",
+            database.restoreCheck.loaded ? "text-success" : "text-destructive",
+          )}
+        >
+          {database.restoreCheck.loaded ? (
+            <>
+              <ShieldCheck className="mt-px size-3.5 shrink-0" />
+              Test-restored into an empty server: {database.restoreCheck.objects} table
+              {database.restoreCheck.objects === 1 ? "" : "s"} came back.
+            </>
+          ) : (
+            <>
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              Did not restore into an empty server: {database.restoreCheck.detail}
+            </>
+          )}
+        </p>
+      )}
+
       {/* The command turns a file in a snapshot into a restore someone can
           actually perform. Shown rather than run: replaying a dump replaces a
           live database, which needs the same deliberate confirmation as any

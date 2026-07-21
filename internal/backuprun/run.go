@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Cod3ioCH/Back-Orbit/internal/dbdump"
 	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 	"github.com/Cod3ioCH/Back-Orbit/internal/storage"
 )
@@ -70,6 +71,11 @@ type Run struct {
 	Phase   Phase   `json:"phase"`
 
 	Volumes []string `json:"volumes"`
+
+	// VerifyRestores asks each export to be loaded back into a throwaway
+	// server before the run is called done. Not persisted: it describes what
+	// this run was asked to do, and the outcome is recorded per database.
+	VerifyRestores bool `json:"-"`
 
 	// sources carries the resolved sources between Start and the goroutine
 	// that runs the backup. Not persisted: the run row records the names, and
@@ -175,6 +181,11 @@ type DatabaseDump struct {
 	// Note explains a level that is not "exported", so the limitation travels
 	// with the snapshot rather than living only in a run's warnings.
 	Note string `json:"note,omitempty"`
+
+	// RestoreCheck is the outcome of loading this export back into an empty
+	// server, when that was asked for. Its absence means the export was never
+	// tried, which is different from having been tried and failed.
+	RestoreCheck *dbdump.RestoreCheck `json:"restoreCheck,omitempty"`
 }
 
 // MarshalJSON adds the replay command to the serialised form.
