@@ -34,6 +34,17 @@ type Config struct {
 	// TrustProxyHeaders controls whether X-Forwarded-Proto is trusted to
 	// mark cookies Secure. Only enable this behind a trusted reverse proxy.
 	TrustProxyHeaders bool
+
+	// MasterKeyFile points at a file holding the secret store's master
+	// passphrase — typically a Docker secret at /run/secrets/... . When set,
+	// Back-Orbit unlocks the secret store at startup without a human present,
+	// which is what keeps scheduled backups running across restarts.
+	//
+	// There is deliberately no equivalent environment variable: the value
+	// that protects every other credential should not be sitting in a process
+	// environment, where it surfaces in `docker inspect`, crash dumps and
+	// every child process.
+	MasterKeyFile string
 }
 
 // Load reads configuration from environment variables, applying defaults.
@@ -44,6 +55,7 @@ func Load() (Config, error) {
 		DockerHost:        getEnv("BACKORBIT_DOCKER_HOST", "unix:///var/run/docker.sock"),
 		SessionCookieName: getEnv("BACKORBIT_SESSION_COOKIE", "backorbit_session"),
 		TrustProxyHeaders: getEnvBool("BACKORBIT_TRUST_PROXY_HEADERS", false),
+		MasterKeyFile:     getEnv("BACKORBIT_MASTER_KEY_FILE", ""),
 	}
 
 	ttl, err := getEnvDuration("BACKORBIT_SESSION_TTL", 24*time.Hour)

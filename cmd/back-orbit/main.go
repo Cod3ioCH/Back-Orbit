@@ -16,8 +16,45 @@ import (
 	"github.com/back-orbit/back-orbit/internal/config"
 	"github.com/back-orbit/back-orbit/internal/database"
 	"github.com/back-orbit/back-orbit/internal/docker"
+	"github.com/back-orbit/back-orbit/internal/secrets"
 	"github.com/back-orbit/back-orbit/web"
 )
+
+// unlockSecretStore opens the secret store at startup when a master key file
+// is configured, so scheduled work can reach repository credentials without a
+// human being present after a restart.
+//
+// Every outcome here is a warning rather than a fatal error: Back-Orbit still
+// serves its UI with a locked store, and refusing to start would take the
+// whole tool offline over a problem the operator can only diagnose through
+// that same UI. What must never happen is failing silently — each case says
+// plainly what is not going to work until it is fixed.
+func unlockSecretStore(ctx context.Context, cfg config.Config, store *secrets.Store) {
+	initialized, err := store.IsInitialized(ctx)
+	if err != nil {
+		slog.Error("could not determine secret store state", "error", err)
+		return
+	}
+	if !initialized {
+		slog.Info("secret store not initialised yet; set a master passphrase to store credentials")
+		return
+	}
+
+	if cfg.MasterKeyFile == "" {
+		slog.Warn("secret store is locked and no master key file is configured; " +
+			"scheduled backups cannot run until it is unlocked")
+		return
+	}
+
+	if err := store.UnlockFromFile(ctx, cfg.MasterKeyFile); err != nil {
+		slog.Error("could not unlock the secret store from the master key file; "+
+			"scheduled backups will not run until this is resolved",
+			"path", cfg.MasterKeyFile, "error", err)
+		return
+	}
+
+	slog.Info("secret store unlocked from master key file", "path", cfg.MasterKeyFile)
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -51,6 +88,9 @@ func run() error {
 		slog.Warn("docker client unavailable, Docker-dependent features will be disabled", "error", err)
 		dockerClient = nil
 	}
+
+	secretStore := secrets.NewStore(db)
+	unlockSecretStore(context.Background(), cfg, secretStore)
 
 	staticFS, err := web.DistFS()
 	if err != nil {
