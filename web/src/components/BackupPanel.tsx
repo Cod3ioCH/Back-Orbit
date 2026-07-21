@@ -22,6 +22,7 @@ import {
   type BackupPhase,
   type BackupRun,
   type BackupRunStatus,
+  type BackupSource,
   type ProjectDetail,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -125,6 +126,8 @@ export function BackupPanel({ project }: { project: ProjectDetail }) {
 
   const ready = repositories.data?.filter((repo) => repo.status === "ready") ?? [];
   const selected = repositoryId || ready[0]?.id || "";
+  const backupable = project.sources.filter((source) => !source.skipped);
+  const skipped = project.sources.filter((source) => source.skipped);
 
   return (
     <Card>
@@ -173,7 +176,7 @@ export function BackupPanel({ project }: { project: ProjectDetail }) {
             <Button
               size="sm"
               onClick={() => startMutation.mutate(selected)}
-              disabled={!selected || startMutation.isPending || project.volumes.length === 0}
+              disabled={!selected || startMutation.isPending || backupable.length === 0}
               aria-busy={startMutation.isPending}
             >
               {startMutation.isPending ? (
@@ -195,10 +198,34 @@ export function BackupPanel({ project }: { project: ProjectDetail }) {
             No repository is ready yet. Add one under Repositories and initialise it first.
           </p>
         )}
-        {project.volumes.length === 0 && (
+        {backupable.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            This project has no named volumes, so there is nothing to back up yet.
+            Back-Orbit found no data in this project: no named volumes and no bind-mounted
+            directories.
           </p>
+        )}
+
+        {/* What will be covered, stated before the button is pressed. "It
+            backed up something" is not the same as "it backed up your data",
+            and the difference is only visible here. */}
+        {backupable.length > 0 && (
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              This backup covers
+            </p>
+            <ul className="space-y-1.5">
+              {backupable.map((source) => (
+                <SourceRow key={source.name} source={source} />
+              ))}
+            </ul>
+            {skipped.length > 0 && (
+              <ul className="mt-2 space-y-1.5 border-t border-border pt-2">
+                {skipped.map((source) => (
+                  <SourceRow key={source.name} source={source} />
+                ))}
+              </ul>
+            )}
+          </div>
         )}
 
         {runs.isLoading ? (
@@ -216,6 +243,23 @@ export function BackupPanel({ project }: { project: ProjectDetail }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function SourceRow({ source }: { source: BackupSource }) {
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
+      <Badge variant="outline" className="font-normal text-muted-foreground">
+        {source.kind === "bind" ? "host directory" : "volume"}
+      </Badge>
+      <span className={cn("font-mono break-all", source.skipped && "text-muted-foreground line-through")}>
+        {source.name}
+      </span>
+      {source.mountedAt && (
+        <span className="text-muted-foreground">→ {source.mountedAt}</span>
+      )}
+      {source.skipped && <span className="text-muted-foreground">skipped: {source.skipped}</span>}
+    </li>
   );
 }
 
@@ -293,6 +337,11 @@ function RunRow({ run }: { run: BackupRun }) {
                         {volume.files} entries · {formatBytes(volume.bytes)} ·{" "}
                         {volume.ownership.length} ownership records kept
                       </p>
+                      {(volume.sqliteDatabases ?? []).map((db) => (
+                        <p key={db.path} className="text-success">
+                          {db.path}: {db.method}
+                        </p>
+                      ))}
                       {!volume.ownershipPreserved && (
                         <p className="text-warning">
                           Original file owners could not be applied to the staged copy, so

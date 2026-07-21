@@ -137,6 +137,10 @@ func (s *Service) attachDockerState(ctx context.Context, record Record) Detail {
 		Containers: []docker.Container{},
 		Volumes:    []docker.Volume{},
 		Networks:   []docker.Network{},
+		// Initialised so every path out of this function yields an empty list
+		// rather than a null, and callers never have to distinguish "no data
+		// sources" from "we did not get that far".
+		Sources: []BackupSource{},
 	}
 
 	if s.docker == nil {
@@ -160,6 +164,7 @@ func (s *Service) attachDockerState(ctx context.Context, record Record) Detail {
 	detail.Containers = live.Containers
 	detail.Volumes = live.Volumes
 	detail.Networks = live.Networks
+	detail.Sources = BackupSources(detail)
 	return detail
 }
 

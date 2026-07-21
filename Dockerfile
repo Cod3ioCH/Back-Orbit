@@ -32,7 +32,11 @@ ARG RESTIC_VERSION=0.19.1
 ARG RESTIC_SHA256_AMD64=f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c
 ARG RESTIC_SHA256_ARM64=a5f64aaab53d51e311fa3829124c5b703f2d14cf187d8640b6be3b2b49376465
 
-RUN apk add --no-cache ca-certificates wget bzip2 && \
+# sqlite is not a Back-Orbit dependency — it never touches its own database
+# through it. It is here for helper containers, which run sqlite3 against a
+# user's live database so the copy is transactionally consistent rather than a
+# file copy that may be missing recent transactions.
+RUN apk add --no-cache ca-certificates wget bzip2 sqlite && \
     arch="${TARGETARCH:-$(uname -m)}" && \
     case "$arch" in \
       amd64|x86_64)  arch=amd64; sha="$RESTIC_SHA256_AMD64" ;; \

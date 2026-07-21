@@ -12,6 +12,7 @@ package backuprun
 import (
 	"time"
 
+	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 	"github.com/Cod3ioCH/Back-Orbit/internal/storage"
 )
 
@@ -67,6 +68,11 @@ type Run struct {
 	Phase   Phase   `json:"phase"`
 
 	Volumes []string `json:"volumes"`
+
+	// sources carries the resolved sources between Start and the goroutine
+	// that runs the backup. Not persisted: the run row records the names, and
+	// this is only the plumbing to reach them.
+	sources []projects.BackupSource
 
 	FilesTotal int64 `json:"filesTotal"`
 	BytesTotal int64 `json:"bytesTotal"`
@@ -125,6 +131,11 @@ type Manifest struct {
 // VolumeManifest is one volume's contribution to a snapshot.
 type VolumeManifest struct {
 	Name string `json:"name"`
+	// Kind is "volume" or "bind" — a restore has to put the data back the way
+	// it came, and those are two different operations.
+	Kind string `json:"kind"`
+	// MountedAt is where this data appeared inside the application container.
+	MountedAt string `json:"mountedAt,omitempty"`
 	// PathInSnapshot is where this volume's contents sit inside the snapshot,
 	// which is what a restore needs in order to find them again.
 	PathInSnapshot string `json:"pathInSnapshot"`
@@ -145,6 +156,11 @@ type VolumeManifest struct {
 	// original ownership on disk. When false, Ownership is the only record of
 	// it and a restore has to reapply it.
 	OwnershipPreserved bool `json:"ownershipPreserved"`
+
+	// SQLiteDatabases names the databases that were captured through SQLite
+	// rather than copied as files, so a restore knows which files are a
+	// consistent database and which are only a copy.
+	SQLiteDatabases []storage.SQLiteCapture `json:"sqliteDatabases,omitempty"`
 
 	Warnings []string `json:"warnings,omitempty"`
 }

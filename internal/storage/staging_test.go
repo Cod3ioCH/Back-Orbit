@@ -122,7 +122,7 @@ func TestStageVolumeExtractsContents(t *testing.T) {
 	if len(fake.CreatedContainers) != 1 {
 		t.Fatalf("expected one helper container, got %d", len(fake.CreatedContainers))
 	}
-	if fake.CreatedContainers[0].VolumeName != "app-data" {
+	if fake.CreatedContainers[0].Source != "app-data" {
 		t.Fatalf("wrong volume mounted: %+v", fake.CreatedContainers[0])
 	}
 	if leaked := fake.LeakedContainers(); len(leaked) != 0 {
@@ -306,10 +306,10 @@ func TestSweepOrphansRemovesLeftovers(t *testing.T) {
 	ctx := context.Background()
 
 	// Simulate two helper containers left behind by a crashed run.
-	if _, err := fake.CreateHelperContainer(ctx, docker.HelperContainerRequest{VolumeName: "one"}); err != nil {
+	if _, err := fake.CreateHelperContainer(ctx, docker.HelperContainerRequest{Source: "one"}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := fake.CreateHelperContainer(ctx, docker.HelperContainerRequest{VolumeName: "two"}); err != nil {
+	if _, err := fake.CreateHelperContainer(ctx, docker.HelperContainerRequest{Source: "two"}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 

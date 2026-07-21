@@ -59,6 +59,10 @@ type Result struct {
 	// carry their original ownership. When false, the Ownership list is the
 	// only record of it and a restore must reapply it.
 	OwnershipPreserved bool
+	// SQLiteDatabases lists databases that were re-taken consistently rather
+	// than left as the plain file copy. Recorded so a restore — and the person
+	// reading the snapshot later — can tell which files are trustworthy.
+	SQLiteDatabases []SQLiteCapture
 	// Warnings describes anything that could not be staged faithfully.
 	Warnings []string
 	// Duration is how long staging took.
@@ -80,13 +84,34 @@ func NewStager(dockerClient docker.Client, helperImage string) *Stager {
 }
 
 // StageVolume copies the contents of a named volume into destDir.
-//
-// The helper container is always removed, including when staging fails part
-// way through, so a failed backup cannot leave containers behind.
 func (s *Stager) StageVolume(ctx context.Context, volumeName, destDir string) (*Result, error) {
 	if volumeName == "" {
 		return nil, errors.New("storage: volume name must not be empty")
 	}
+	return s.stage(ctx, volumeName, destDir, "stage-volume:"+volumeName)
+}
+
+// StageBindMount copies the contents of a host directory into destDir.
+//
+// Back-Orbit cannot see the host filesystem, but the Docker daemon can: the
+// helper container names the host path as its bind source and the daemon
+// resolves it. Without this, the most common way people persist data — a
+// `./data:/app/data` line in a Compose file — could not be backed up at all.
+func (s *Stager) StageBindMount(ctx context.Context, hostPath, destDir string) (*Result, error) {
+	if hostPath == "" {
+		return nil, errors.New("storage: bind mount path must not be empty")
+	}
+	if !strings.HasPrefix(hostPath, "/") {
+		return nil, fmt.Errorf("storage: bind mount source %q must be an absolute path", hostPath)
+	}
+	return s.stage(ctx, hostPath, destDir, "stage-bind:"+hostPath)
+}
+
+// stage reads a source — a named volume or a host path — into destDir.
+//
+// The helper container is always removed, including when staging fails part
+// way through, so a failed backup cannot leave containers behind.
+func (s *Stager) stage(ctx context.Context, source, destDir, purpose string) (*Result, error) {
 	if err := os.MkdirAll(destDir, 0o700); err != nil {
 		return nil, fmt.Errorf("storage: create staging directory: %w", err)
 	}
@@ -99,17 +124,17 @@ func (s *Stager) StageVolume(ctx context.Context, volumeName, destDir string) (*
 	started := time.Now()
 
 	containerID, err := s.docker.CreateHelperContainer(ctx, docker.HelperContainerRequest{
-		Image:      image,
-		VolumeName: volumeName,
-		MountPath:  mountPath,
-		Purpose:    "stage-volume:" + volumeName,
+		Image:     image,
+		Source:    source,
+		MountPath: mountPath,
+		Purpose:   purpose,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("storage: create helper container for volume %q: %w", volumeName, err)
+		return nil, fmt.Errorf("storage: create helper container for %q: %w", source, err)
 	}
 
 	// Removal runs on every path out of this function, including panics.
-	// A leaked helper container pins the volume and confuses the next run, so
+	// A leaked helper container pins the source and confuses the next run, so
 	// this must not depend on reaching the happy path.
 	defer func() {
 		// A fresh context: the caller's may already be cancelled, and cleanup
@@ -118,24 +143,73 @@ func (s *Stager) StageVolume(ctx context.Context, volumeName, destDir string) (*
 		defer cancel()
 		if removeErr := s.docker.RemoveContainer(cleanupCtx, containerID); removeErr != nil {
 			slog.Error("storage: could not remove helper container; it will be swept on next start",
-				"container", containerID, "volume", volumeName, "error", removeErr)
+				"container", containerID, "source", source, "error", removeErr)
 		}
 	}()
 
 	archive, err := s.docker.ContainerArchive(ctx, containerID, mountPath+"/.")
 	if err != nil {
-		return nil, fmt.Errorf("storage: read volume %q: %w", volumeName, err)
+		return nil, fmt.Errorf("storage: read %q: %w", source, err)
 	}
 	defer archive.Close()
 
 	result, err := extractTar(archive, destDir)
 	if err != nil {
-		return nil, fmt.Errorf("storage: extract volume %q: %w", volumeName, err)
+		return nil, fmt.Errorf("storage: extract %q: %w", source, err)
+	}
+
+	// A plain file copy of a live SQLite database is not a backup of it, so any
+	// database found in what was just staged is re-taken through SQLite itself.
+	// This happens after the copy rather than instead of it: the copy gives the
+	// complete tree, and only the database files within it are replaced.
+	captures, sqliteWarnings, err := s.captureSQLiteDatabases(ctx, source, destDir)
+	if err != nil {
+		return nil, err
+	}
+	result.SQLiteDatabases = captures
+	result.Warnings = append(result.Warnings, sqliteWarnings...)
+
+	// The captured databases differ in size from what was first copied, so the
+	// totals are recomputed rather than left describing a tree that no longer
+	// exists.
+	if len(captures) > 0 {
+		if err := recountTree(destDir, result); err != nil {
+			return nil, err
+		}
 	}
 
 	result.Dir = destDir
 	result.Duration = time.Since(started)
 	return result, nil
+}
+
+// recountTree refreshes the file and byte totals after the tree was modified.
+func recountTree(root string, result *Result) error {
+	var files int
+	var bytes int64
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == root {
+			return nil
+		}
+		files++
+		if entry.Type().IsRegular() {
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			bytes += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("storage: recount staged tree: %w", err)
+	}
+	result.Files = files
+	result.Bytes = bytes
+	return nil
 }
 
 // SweepOrphans removes helper containers left behind by an earlier run that

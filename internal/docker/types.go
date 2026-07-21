@@ -132,6 +132,14 @@ type Client interface {
 	// uncompressed tar. The caller must close the returned reader.
 	ContainerArchive(ctx context.Context, containerID, path string) (io.ReadCloser, error)
 
+	// RunHelperContainer starts a helper created with a Command and waits for
+	// it to finish, returning its exit code and output.
+	//
+	// This is the one path where a helper actually executes something, so it
+	// is deliberately separate from creating an inert one: the reader can see
+	// at the call site which of the two is happening.
+	RunHelperContainer(ctx context.Context, containerID string) (ContainerRunResult, error)
+
 	// RemoveContainer force-removes a container. Removing one that is already
 	// gone is not an error, so cleanup can run unconditionally.
 	RemoveContainer(ctx context.Context, containerID string) error
@@ -152,15 +160,44 @@ type Client interface {
 
 // HelperContainerRequest describes a helper container to create.
 type HelperContainerRequest struct {
-	// Image to base the container on. It is never executed.
+	// Image to base the container on.
 	Image string
-	// VolumeName is the named volume to mount.
-	VolumeName string
-	// MountPath is where the volume appears inside the container.
+
+	// Source is what to mount: a named volume, or an absolute path on the
+	// Docker host for a bind mount. The daemon resolves either, which is what
+	// lets a containerised Back-Orbit read a host directory it cannot see
+	// itself.
+	Source string
+
+	// MountPath is where the source appears inside the container.
 	MountPath string
+
+	// Writable mounts the source read-write.
+	//
+	// Staging never sets this: a backup that can alter its own source is worse
+	// than no backup. The one exception is capturing a live SQLite database,
+	// where SQLite itself must be able to open the file properly — see
+	// storage.captureSQLite for why read-only cannot work there.
+	Writable bool
+
+	// Command, when set, is executed in the container. Leaving it empty keeps
+	// the container inert: it is created and never started, so no process ever
+	// runs and the image's entrypoint is irrelevant.
+	Command []string
+
 	// Purpose is recorded as a label, so an orphan can be explained rather
 	// than just found.
 	Purpose string
+}
+
+// ContainerRunResult reports how an executed helper container finished.
+type ContainerRunResult struct {
+	ExitCode int
+	// Output is the container's combined output, bounded. It is the only
+	// explanation available when a helper fails, so it is captured rather
+	// than discarded — but it can contain anything the tool printed, so
+	// callers must treat it as untrusted text.
+	Output string
 }
 
 // HelperContainerLabel marks every container Back-Orbit creates, so they can

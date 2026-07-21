@@ -62,4 +62,7 @@ type Detail struct {
 	Volumes         []docker.Volume    `json:"volumes"`
 	Networks        []docker.Network   `json:"networks"`
 	DockerWarning   string             `json:"dockerWarning,omitempty"`
+	// Sources is everything in the project that holds data: named volumes and
+	// bind mounts alike, including the ones that will be skipped and why.
+	Sources []BackupSource `json:"sources"`
 }

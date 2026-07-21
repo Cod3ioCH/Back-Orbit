@@ -128,12 +128,28 @@ export interface ProjectRecord {
   updatedAt: string;
 }
 
+export type BackupSourceKind = "volume" | "bind";
+
+/**
+ * Something in a project that holds data. Bind mounts are included alongside
+ * named volumes, and sources that will not be backed up carry the reason
+ * rather than being left out — an omission reads as "nothing to worry about".
+ */
+export interface BackupSource {
+  kind: BackupSourceKind;
+  name: string;
+  mountedAt: string;
+  services: string[];
+  skipped?: string;
+}
+
 export interface ProjectDetail extends ProjectRecord {
   dockerAvailable: boolean;
   containers: DockerContainer[];
   volumes: DockerVolume[];
   networks: DockerNetwork[];
   dockerWarning?: string;
+  sources: BackupSource[];
 }
 
 export interface AuditEvent {
@@ -225,8 +241,17 @@ export interface OwnershipEntry {
   mode: number;
 }
 
+export interface SQLiteCapture {
+  path: string;
+  method: string;
+  bytes: number;
+}
+
 export interface VolumeManifest {
   name: string;
+  kind: string;
+  mountedAt?: string;
+  sqliteDatabases?: SQLiteCapture[];
   pathInSnapshot: string;
   files: number;
   bytes: number;

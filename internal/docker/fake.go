@@ -32,6 +32,11 @@ type FakeClient struct {
 	// cleans up after itself even when it fails.
 	CreatedContainers []HelperContainerRequest
 	RemovedContainers []string
+	// RanContainers records helpers that were actually executed, so a test can
+	// assert that a code path did — or did not — run something.
+	RanContainers []string
+	RunResult     ContainerRunResult
+	RunErr        error
 	liveContainers    map[string]bool
 }
 
@@ -72,12 +77,24 @@ func (f *FakeClient) CreateHelperContainer(ctx context.Context, req HelperContai
 	defer f.mu.Unlock()
 
 	f.CreatedContainers = append(f.CreatedContainers, req)
-	id := "fake-helper-" + req.VolumeName
+	id := "fake-helper-" + req.Source
 	if f.liveContainers == nil {
 		f.liveContainers = map[string]bool{}
 	}
 	f.liveContainers[id] = true
 	return id, nil
+}
+
+// RunResult is what RunHelperContainer returns; RunErr overrides it.
+func (f *FakeClient) RunHelperContainer(ctx context.Context, containerID string) (ContainerRunResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.RanContainers = append(f.RanContainers, containerID)
+	if f.RunErr != nil {
+		return ContainerRunResult{}, f.RunErr
+	}
+	return f.RunResult, nil
 }
 
 func (f *FakeClient) ContainerArchive(ctx context.Context, containerID, path string) (io.ReadCloser, error) {

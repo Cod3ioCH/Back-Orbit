@@ -102,13 +102,21 @@ func (r *Runner) Start(ctx context.Context, req StartRequest) (Run, error) {
 		return Run{}, err
 	}
 
-	volumes := make([]string, 0, len(project.Volumes))
-	for _, volume := range project.Volumes {
-		volumes = append(volumes, volume.Name)
+	// Named volumes and bind mounts alike. Skipped sources (the Docker socket,
+	// host system files) are left out here rather than failing the run: they
+	// are listed in the UI with the reason, so nothing disappears silently.
+	sources := make([]projects.BackupSource, 0, len(project.Sources))
+	volumes := make([]string, 0, len(project.Sources))
+	for _, source := range project.Sources {
+		if !source.Backupable() {
+			continue
+		}
+		sources = append(sources, source)
+		volumes = append(volumes, source.Name)
 	}
-	if len(volumes) == 0 {
+	if len(sources) == 0 {
 		if !project.DockerAvailable {
-			return Run{}, fmt.Errorf("%w: Docker is unreachable, so its volumes could not be listed",
+			return Run{}, fmt.Errorf("%w: Docker is unreachable, so its data could not be listed",
 				ErrNothingToBackUp)
 		}
 		return Run{}, ErrNothingToBackUp
@@ -130,6 +138,7 @@ func (r *Runner) Start(ctx context.Context, req StartRequest) (Run, error) {
 		Status:         StatusRunning,
 		Phase:          PhasePreparing,
 		Volumes:        volumes,
+		sources:        sources,
 		Warnings:       []string{},
 		StartedAt:      now,
 		CreatedAt:      now,
@@ -253,15 +262,26 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 	run.Phase = PhaseStaging
 	r.persist(ctx, &run)
 
-	stagedPaths := make([]string, 0, len(run.Volumes))
-	for _, name := range run.Volumes {
+	stagedPaths := make([]string, 0, len(run.sources))
+	for _, source := range run.sources {
+		name := source.Name
 		if ctx.Err() != nil {
 			r.finishCancelled(ctx, &run, actorUserID)
 			return
 		}
 
 		dest := filepath.Join(workDir, pathSegment(name))
-		result, err := r.stager.StageVolume(ctx, name, dest)
+
+		var (
+			result *storage.Result
+			err    error
+		)
+		switch source.Kind {
+		case projects.SourceBind:
+			result, err = r.stager.StageBindMount(ctx, source.Name, dest)
+		default:
+			result, err = r.stager.StageVolume(ctx, source.Name, dest)
+		}
 		if err != nil {
 			// Cancellation surfaces here as an ordinary error from whatever
 			// call was interrupted. Reporting it as a failure would tell the
@@ -283,7 +303,10 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 
 		manifest.Volumes = append(manifest.Volumes, VolumeManifest{
 			Name:               name,
+			Kind:               string(source.Kind),
+			MountedAt:          source.MountedAt,
 			PathInSnapshot:     dest,
+			SQLiteDatabases:    result.SQLiteDatabases,
 			Files:              int64(result.Files),
 			Bytes:              result.Bytes,
 			Ownership:          result.Ownership,
