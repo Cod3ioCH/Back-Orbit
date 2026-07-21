@@ -36,6 +36,9 @@ type Runner struct {
 	engine     backup.BackupEngine
 	recorder   *events.Recorder
 	stagingDir string
+	// blueprints is optional. Without it a backup still runs; it simply cannot
+	// say which detected databases it captured as plain files.
+	blueprints BlueprintSource
 
 	// mu guards active. A run is cancellable only while this process is the
 	// one running it, which is why cancellation lives in memory and
@@ -58,6 +61,7 @@ func NewRunner(
 	engine backup.BackupEngine,
 	recorder *events.Recorder,
 	stagingDir string,
+	blueprints BlueprintSource,
 ) *Runner {
 	return &Runner{
 		store:      newStore(db),
@@ -67,6 +71,7 @@ func NewRunner(
 		engine:     engine,
 		recorder:   recorder,
 		stagingDir: stagingDir,
+		blueprints: blueprints,
 		active:     map[string]context.CancelFunc{},
 		byProject:  map[string]string{},
 	}
@@ -320,6 +325,12 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 		})
 		r.persist(ctx, &run)
 	}
+
+	// What the analyzer found, held against what staging actually did. A
+	// database captured as files rather than dumped is the difference between
+	// a snapshot that restores and one that only looks like it will.
+	run.Warnings = append(run.Warnings,
+		databaseConsistencyWarnings(ctx, r.blueprints, run.ProjectID)...)
 
 	// --- Snapshot --------------------------------------------------------
 	run.Phase = PhaseSnapshotting
