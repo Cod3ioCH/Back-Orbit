@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { FullPageSpinner } from "@/components/layout/FullPageSpinner";
 
 const schema = z
   .object({
@@ -42,10 +43,16 @@ export function SetupPage() {
     },
   });
 
+  // Wait before deciding, so an already-configured instance never flashes a
+  // "create the administrator account" form on its way to the sign-in page.
+  if (isLoading) {
+    return <FullPageSpinner />;
+  }
+
   // Redirect via <Navigate> rather than calling navigate() here: this runs
   // during render, and triggering a router state update from inside render
   // is a side effect React warns about.
-  if (!isLoading && setupComplete) {
+  if (setupComplete) {
     return <Navigate to="/login" replace />;
   }
 

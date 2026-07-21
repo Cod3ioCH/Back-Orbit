@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { LoginPage } from "@/pages/LoginPage";
@@ -15,14 +15,21 @@ vi.mock("@/lib/api", async (importOriginal) => {
   };
 });
 
+// Mutable so each test can put the app in the state it is about, rather than
+// every test sharing one fixed situation.
+let authState: {
+  user: { id: string; username: string } | undefined;
+  isLoading: boolean;
+  setupComplete: boolean | undefined;
+};
+
 vi.mock("@/lib/auth-context", () => ({
-  useAuth: () => ({
-    user: undefined,
-    isLoading: false,
-    setupComplete: true,
-    refresh: vi.fn(),
-  }),
+  useAuth: () => ({ ...authState, refresh: vi.fn() }),
 }));
+
+beforeEach(() => {
+  authState = { user: undefined, isLoading: false, setupComplete: true };
+});
 
 function renderLoginPage() {
   const queryClient = new QueryClient({
@@ -31,7 +38,11 @@ function renderLoginPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/login"]}>
-        <LoginPage />
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/setup" element={<p>Create the administrator account</p>} />
+          <Route path="/" element={<p>Signed in</p>} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -65,5 +76,29 @@ describe("LoginPage", () => {
     await waitFor(() => {
       expect(api.login).toHaveBeenCalledWith("admin", "correct-horse-battery-staple");
     });
+  });
+
+  // A fresh install reached through a remembered /login URL — after wiping the
+  // data volume, or simply because logging out navigates here and the browser
+  // restored the tab. Showing a sign-in form asks for a password that cannot
+  // exist yet, and leaves no way to reach initial setup.
+  it("sends you to setup when no administrator account exists", () => {
+    authState = { user: undefined, isLoading: false, setupComplete: false };
+
+    renderLoginPage();
+
+    expect(screen.getByText(/create the administrator account/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sign in/i })).not.toBeInTheDocument();
+  });
+
+  // Deciding before the setup status is known would flash the sign-in form at
+  // someone on their way to setup.
+  it("decides nothing while the setup status is still loading", () => {
+    authState = { user: undefined, isLoading: true, setupComplete: undefined };
+
+    renderLoginPage();
+
+    expect(screen.queryByRole("button", { name: /sign in/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/create the administrator account/i)).not.toBeInTheDocument();
   });
 });

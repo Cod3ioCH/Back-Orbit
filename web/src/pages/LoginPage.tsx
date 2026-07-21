@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { FullPageSpinner } from "@/components/layout/FullPageSpinner";
 
 const schema = z.object({
   username: z.string().min(1, "Required"),
@@ -21,7 +22,7 @@ type FormValues = z.infer<typeof schema>;
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { refresh, user } = useAuth();
+  const { refresh, user, setupComplete, isLoading } = useAuth();
   const {
     register,
     handleSubmit,
@@ -36,9 +37,25 @@ export function LoginPage() {
     },
   });
 
+  // Wait for the setup/session queries before deciding anything. Rendering the
+  // form first would flash a sign-in prompt at someone who is about to be sent
+  // to initial setup instead.
+  if (isLoading) {
+    return <FullPageSpinner />;
+  }
+
   // Redirect via <Navigate> rather than calling navigate() here: this runs
   // during render, and triggering a router state update from inside render
   // is a side effect React warns about.
+  //
+  // With no administrator account yet there is nothing to sign in to, and the
+  // form asks for a password that cannot exist. This is reachable on a fresh
+  // install because the URL outlives the data: logging out navigates here, and
+  // browsers restore the tab and offer it from history long after the database
+  // behind it was wiped. It mirrors SetupPage's guard in the other direction.
+  if (setupComplete === false) {
+    return <Navigate to="/setup" replace />;
+  }
   if (user) {
     return <Navigate to="/" replace />;
   }
