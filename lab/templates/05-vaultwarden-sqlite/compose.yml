@@ -1,7 +1,7 @@
 name: bo-lab-vaultwarden-sqlite
 services:
   vaultwarden:
-    image: vaultwarden/server:latest
+    image: vaultwarden/server:1.36.0
     restart: unless-stopped
     ports: ["127.0.0.1:${LAB_PORT:-18105}:80"]
     environment:

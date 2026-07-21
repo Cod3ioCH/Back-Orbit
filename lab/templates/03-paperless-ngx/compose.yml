@@ -1,0 +1,48 @@
+name: bo-lab-paperless-ngx
+services:
+  broker:
+    image: redis:7-alpine
+    restart: unless-stopped
+  database:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U paperless -d paperless]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.15
+    restart: unless-stopped
+    depends_on:
+      database: {condition: service_healthy}
+      broker: {condition: service_started}
+    ports: ["127.0.0.1:${LAB_PORT:-18103}:8000"]
+    environment:
+      PAPERLESS_REDIS: redis://broker:6379
+      PAPERLESS_DBHOST: database
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS_FILE: /run/secrets/postgres_password
+      PAPERLESS_SECRET_KEY_FILE: /run/secrets/paperless_secret_key
+      PAPERLESS_URL: http://localhost:${LAB_PORT:-18103}
+    secrets: [postgres_password, paperless_secret_key]
+    volumes:
+      - paperless-data:/usr/src/paperless/data
+      - paperless-media:/usr/src/paperless/media
+      - ./consume:/usr/src/paperless/consume
+      - ./export:/usr/src/paperless/export
+secrets:
+  postgres_password: {file: ./secrets/postgres_password}
+  paperless_secret_key: {file: ./secrets/paperless_secret_key}
+volumes:
+  database-data:
+  paperless-data:
+  paperless-media:

@@ -1,0 +1,31 @@
+name: bo-lab-vaultwarden-postgresql
+services:
+  database:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vaultwarden
+      POSTGRES_USER: vaultwarden
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U vaultwarden -d vaultwarden]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  vaultwarden:
+    image: vaultwarden/server:1.36.0
+    restart: unless-stopped
+    depends_on:
+      database: {condition: service_healthy}
+    ports: ["127.0.0.1:${LAB_PORT:-18106}:80"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SIGNUPS_ALLOWED: "true"
+      DOMAIN: http://localhost:${LAB_PORT:-18106}
+    volumes:
+      - vaultwarden-data:/data
+volumes:
+  database-data:
+  vaultwarden-data:

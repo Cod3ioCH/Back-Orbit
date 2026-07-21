@@ -47,6 +47,33 @@ case "$scenario" in
     generate_secret postgres_password
     generate_secret nextcloud_admin_password
     ;;
+  03-paperless-ngx)
+    generate_secret postgres_password
+    generate_secret paperless_secret_key
+    ;;
+  04-immich)
+    generate_secret database_password
+    database_password=$(tr -d '\n' < "$target_dir/secrets/database_password")
+    umask 077
+    {
+      echo "DB_PASSWORD=$database_password"
+      echo "DB_USERNAME=postgres"
+      echo "DB_DATABASE_NAME=immich"
+      echo "IMMICH_VERSION=v2.7.5"
+    } > "$target_dir/.env"
+    ;;
+  06-vaultwarden-postgresql)
+    generate_secret postgres_password
+    database_password=$(tr -d '\n' < "$target_dir/secrets/postgres_password")
+    umask 077
+    {
+      echo "POSTGRES_PASSWORD=$database_password"
+      echo "DATABASE_URL=postgresql://vaultwarden:$database_password@database:5432/vaultwarden"
+    } > "$target_dir/.env"
+    ;;
+  07-gitea-postgresql)
+    generate_secret postgres_password
+    ;;
 esac
 
 echo "$target_dir"

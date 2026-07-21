@@ -30,3 +30,4 @@ Never reuse generated lab credentials outside this local test environment.
 `catalog.yaml` is the delivery contract for the first wave. A scenario marked
 `ready` has a Compose template in this repository. `planned` means its
 protection template exists, but its executable lab scenario is not yet ready.
+Ten of the twenty-five scenarios are currently ready.

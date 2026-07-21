@@ -1,0 +1,39 @@
+name: bo-lab-gitea-postgresql
+services:
+  database:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gitea
+      POSTGRES_USER: gitea
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U gitea -d gitea]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  gitea:
+    image: docker.gitea.com/gitea:1.26.2
+    restart: unless-stopped
+    depends_on:
+      database: {condition: service_healthy}
+    ports:
+      - "127.0.0.1:${LAB_PORT:-18107}:3000"
+      - "127.0.0.1:${LAB_SSH_PORT:-18207}:22"
+    environment:
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: database:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: gitea
+      GITEA__database__PASSWD__FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - gitea-data:/data
+secrets:
+  postgres_password: {file: ./secrets/postgres_password}
+volumes:
+  database-data:
+  gitea-data:
