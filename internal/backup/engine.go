@@ -135,6 +135,21 @@ type VerificationResult struct {
 	Duration time.Duration
 	// Errors holds the integrity problems found. OK is false when non-empty.
 	Errors []string
+
+	// Checks names what was actually examined, so a caller reporting "verified"
+	// can say what that covered. Claiming more than was checked is how a backup
+	// comes to be trusted right up to the moment it is needed.
+	Checks []string
+
+	// FilesListed is how many files the snapshot's tree resolved to, when a
+	// snapshot was verified. A snapshot that lists nothing is reported rather
+	// than passed, since an empty backup is almost never what was intended.
+	FilesListed int64
+
+	// BytesInSnapshot is what restoring this snapshot would produce. Comparing
+	// it against what was handed to the engine is how a backup that quietly
+	// captured less than it was given gets noticed here rather than at restore.
+	BytesInSnapshot int64
 }
 
 // RetentionPolicy expresses which snapshots to keep. Zero values mean the
@@ -192,6 +207,15 @@ type BackupEngine interface {
 	ListSnapshots(ctx context.Context, repository RepositoryConfig) ([]Snapshot, error)
 	RestoreSnapshot(ctx context.Context, request RestoreRequest) (*RestoreResult, error)
 	VerifyRepository(ctx context.Context, repository RepositoryConfig) (*VerificationResult, error)
+
+	// VerifySnapshot checks that one specific snapshot is actually there and
+	// readable, which is not the same question VerifyRepository answers.
+	//
+	// A structurally sound repository can still be missing the snapshot that
+	// was just written, or hold one whose tree does not resolve. Until that is
+	// confirmed, a backup has only been *reported* as taken — and the one
+	// moment it will be tested otherwise is the moment it is needed.
+	VerifySnapshot(ctx context.Context, repository RepositoryConfig, snapshotID string) (*VerificationResult, error)
 	ApplyRetention(ctx context.Context, repository RepositoryConfig, policy RetentionPolicy) error
 	PruneRepository(ctx context.Context, repository RepositoryConfig) error
 }

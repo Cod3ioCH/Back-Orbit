@@ -266,7 +266,116 @@ func (e *ResticEngine) VerifyRepository(ctx context.Context, repository Reposito
 		}, nil
 	}
 
-	return &VerificationResult{OK: true, Duration: time.Since(started)}, nil
+	return &VerificationResult{
+		OK:       true,
+		Duration: time.Since(started),
+		Checks:   []string{"repository structure and index integrity"},
+	}, nil
+}
+
+// VerifySnapshot confirms that snapshotID exists in the repository and that its
+// tree can be read back.
+//
+// Two things are checked, in the order that fails fastest. `restic check`
+// proves the repository's structure and index are sound; listing the snapshot
+// proves this particular backup's metadata decrypts and its tree resolves —
+// the part that says something was really written, rather than that the
+// repository around it is healthy.
+//
+// What this deliberately does not do is re-read every data blob. That means
+// doubling the I/O of the backup that just ran, and on a large repository it
+// turns a two-minute job into an hour. The blobs restic wrote are checksummed
+// on read at restore time; the gap is silent bit-rot on the storage afterwards,
+// which is what a scheduled `check --read-data` is for. Checks says which of
+// these was done, so nothing claims more than it verified.
+func (e *ResticEngine) VerifySnapshot(ctx context.Context, repository RepositoryConfig, snapshotID string) (*VerificationResult, error) {
+	if snapshotID == "" {
+		return nil, &EngineError{
+			Kind: ErrKindUnknown,
+			Op:   "verify-snapshot",
+			Err:  errors.New("no snapshot id given"),
+		}
+	}
+
+	started := time.Now()
+
+	structure, err := e.VerifyRepository(ctx, repository)
+	if err != nil {
+		return nil, err
+	}
+	if !structure.OK {
+		structure.Duration = time.Since(started)
+		return structure, nil
+	}
+
+	// `stats --mode restore-size` walks the snapshot's whole tree, so it proves
+	// the same thing listing it would — that the metadata decrypts and every
+	// node resolves — but answers in one small JSON object.
+	//
+	// Listing was the obvious choice and the wrong one: `restic ls --json`
+	// emits a line per entry, which for a modest 100 MB volume is 148 KB. The
+	// engine caps captured output at a few KiB (deliberately, so a runaway
+	// process cannot exhaust memory), so the count came back truncated and
+	// silently far too low. A verification that reports a wrong number is
+	// worse than one that reports none.
+	result, err := e.run(ctx, repository, runOptions{
+		op:   "stats",
+		args: []string{"stats", "--mode", "restore-size", "--json", snapshotID},
+	})
+	if err != nil {
+		kind := KindOf(err)
+		if kind == ErrKindWrongPassword || kind == ErrKindRepositoryNotFound ||
+			kind == ErrKindEngineMissing || kind == ErrKindCancelled {
+			return nil, err
+		}
+		return &VerificationResult{
+			OK:       false,
+			Duration: time.Since(started),
+			Checks:   structure.Checks,
+			Errors: []string{fmt.Sprintf("snapshot %s could not be read back: %s",
+				shortID(snapshotID), redact(result.tail(), repository))},
+		}, nil
+	}
+
+	var stats struct {
+		TotalSize      int64 `json:"total_size"`
+		TotalFileCount int64 `json:"total_file_count"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(result.stdout.Bytes()), &stats); err != nil {
+		return &VerificationResult{
+			OK:       false,
+			Duration: time.Since(started),
+			Checks:   structure.Checks,
+			Errors:   []string{fmt.Sprintf("snapshot %s reported unreadable statistics: %v", shortID(snapshotID), err)},
+		}, nil
+	}
+
+	verification := &VerificationResult{
+		OK:              true,
+		Duration:        time.Since(started),
+		FilesListed:     stats.TotalFileCount,
+		BytesInSnapshot: stats.TotalSize,
+		Checks: append(append([]string{}, structure.Checks...),
+			fmt.Sprintf("snapshot %s readable (%d files, %d bytes)",
+				shortID(snapshotID), stats.TotalFileCount, stats.TotalSize)),
+	}
+
+	// A snapshot that resolves but holds nothing is the quietest failure of
+	// all: everything reports success and the backup is empty.
+	if stats.TotalFileCount == 0 {
+		verification.OK = false
+		verification.Errors = []string{fmt.Sprintf(
+			"snapshot %s is readable but contains no files; nothing was backed up", shortID(snapshotID))}
+	}
+
+	return verification, nil
+}
+
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
 }
 
 func (e *ResticEngine) ApplyRetention(ctx context.Context, repository RepositoryConfig, policy RetentionPolicy) error {

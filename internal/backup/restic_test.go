@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -453,5 +454,122 @@ func TestOperationsRespectContextDeadline(t *testing.T) {
 
 	if _, err := engine.ListSnapshots(ctx, repo); err == nil {
 		t.Fatal("expected the deadline to abort the operation")
+	}
+}
+
+// TestVerifySnapshotConfirmsTheBackupIsThere is the check that turns "restic
+// reported success" into "the backup exists and can be read back".
+func TestVerifySnapshotConfirmsTheBackupIsThere(t *testing.T) {
+	engine := requireRestic(t)
+	ctx := context.Background()
+	repo := newRepository(t, engine)
+
+	source := writeTree(t, map[string]string{
+		"a.txt":     "content",
+		"sub/b.txt": "more content",
+	})
+	snapshot, err := engine.CreateSnapshot(ctx, SnapshotRequest{Repository: repo, Paths: []string{source}})
+	if err != nil {
+		t.Fatalf("CreateSnapshot: %v", err)
+	}
+
+	result, err := engine.VerifySnapshot(ctx, repo, snapshot.SnapshotID)
+	if err != nil {
+		t.Fatalf("VerifySnapshot: %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("a snapshot just written must verify, got: %v", result.Errors)
+	}
+	if result.FilesListed == 0 {
+		t.Error("the snapshot's tree resolved to nothing, which cannot be right for two files")
+	}
+	// What was checked has to be stated, so nothing downstream can claim the
+	// data blobs were re-read when they were not.
+	if len(result.Checks) < 2 {
+		t.Errorf("expected both the structure and the snapshot to be named as checked, got %v", result.Checks)
+	}
+}
+
+// TestVerifySnapshotFailsForAMissingSnapshot is the case that matters: a
+// repository can be perfectly healthy and still not contain the backup someone
+// believes they took.
+func TestVerifySnapshotFailsForAMissingSnapshot(t *testing.T) {
+	engine := requireRestic(t)
+	ctx := context.Background()
+	repo := newRepository(t, engine)
+
+	source := writeTree(t, map[string]string{"a.txt": "content"})
+	if _, err := engine.CreateSnapshot(ctx, SnapshotRequest{Repository: repo, Paths: []string{source}}); err != nil {
+		t.Fatalf("CreateSnapshot: %v", err)
+	}
+
+	// The repository itself is sound...
+	structure, err := engine.VerifyRepository(ctx, repo)
+	if err != nil || !structure.OK {
+		t.Fatalf("the repository should be healthy: %v %v", structure, err)
+	}
+
+	// ...but this snapshot is not in it.
+	absent := "0000000000000000000000000000000000000000000000000000000000000000"
+	result, err := engine.VerifySnapshot(ctx, repo, absent)
+	if err != nil {
+		t.Fatalf("a missing snapshot is a verification result, not an engine failure: %v", err)
+	}
+	if result.OK {
+		t.Fatal("verification passed for a snapshot that does not exist")
+	}
+	if len(result.Errors) == 0 {
+		t.Error("a failed verification must say what was wrong")
+	}
+}
+
+func TestVerifySnapshotRejectsAnEmptyID(t *testing.T) {
+	engine := requireRestic(t)
+	repo := newRepository(t, engine)
+
+	if _, err := engine.VerifySnapshot(context.Background(), repo, ""); err == nil {
+		t.Fatal("verifying without a snapshot id must fail rather than check nothing and pass")
+	}
+}
+
+// TestVerifySnapshotCountsAccuratelyOnLargeSnapshots guards the mistake that
+// listing the snapshot made: the engine bounds captured output, and a listing
+// of any real volume runs to hundreds of kilobytes, so the count came back
+// truncated and far too low. A verification reporting a confidently wrong
+// number is worse than one reporting none, because it looks checked.
+func TestVerifySnapshotCountsAccuratelyOnLargeSnapshots(t *testing.T) {
+	engine := requireRestic(t)
+	ctx := context.Background()
+	repo := newRepository(t, engine)
+
+	// Enough entries that a per-entry listing would exceed maxCapturedOutput
+	// several times over.
+	files := map[string]string{}
+	for i := 0; i < 600; i++ {
+		files[fmt.Sprintf("dir%02d/file-with-a-reasonably-long-name-%04d.txt", i%20, i)] = "x"
+	}
+	source := writeTree(t, files)
+
+	snapshot, err := engine.CreateSnapshot(ctx, SnapshotRequest{Repository: repo, Paths: []string{source}})
+	if err != nil {
+		t.Fatalf("CreateSnapshot: %v", err)
+	}
+
+	result, err := engine.VerifySnapshot(ctx, repo, snapshot.SnapshotID)
+	if err != nil {
+		t.Fatalf("VerifySnapshot: %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("verification failed: %v", result.Errors)
+	}
+
+	// The count must reflect the whole snapshot, not as much of it as fitted
+	// in a buffer.
+	if result.FilesListed < 600 {
+		t.Errorf("FilesListed = %d, want at least the 600 files written — the count is truncated",
+			result.FilesListed)
+	}
+	if result.BytesInSnapshot < 600 {
+		t.Errorf("BytesInSnapshot = %d, want at least 600", result.BytesInSnapshot)
 	}
 }

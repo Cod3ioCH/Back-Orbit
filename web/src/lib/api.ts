@@ -194,6 +194,89 @@ export interface RepositoryLocation {
   recommended: boolean;
 }
 
+
+export type BackupRunStatus =
+  | "running"
+  | "completed"
+  | "completed_with_warnings"
+  | "failed"
+  | "cancelled";
+
+export type BackupPhase = "preparing" | "staging" | "snapshotting" | "verifying" | "finished";
+
+/**
+ * What was actually checked after a snapshot was written. Kept as a list
+ * rather than a boolean so the UI can say what "verified" covered instead of
+ * implying more was checked than was.
+ */
+export interface BackupVerification {
+  ok: boolean;
+  checks?: string[];
+  errors?: string[];
+  filesListed: number;
+  bytesInSnapshot: number;
+  durationMs: number;
+}
+
+export interface OwnershipEntry {
+  path: string;
+  uid: number;
+  gid: number;
+  mode: number;
+}
+
+export interface VolumeManifest {
+  name: string;
+  pathInSnapshot: string;
+  files: number;
+  bytes: number;
+  ownership: OwnershipEntry[];
+  ownershipPreserved: boolean;
+  warnings?: string[];
+}
+
+export interface BackupManifest {
+  schemaVersion: number;
+  project: string;
+  createdAt: string;
+  volumes: VolumeManifest[];
+}
+
+export interface BackupSnapshot {
+  id: string;
+  runId: string;
+  repositoryId?: string;
+  resticSnapshotId: string;
+  manifest: BackupManifest;
+  sizeBytes: number;
+  filesCount: number;
+  verifiedAt?: string;
+  verification: BackupVerification;
+  createdAt: string;
+}
+
+export interface BackupRun {
+  id: string;
+  projectId?: string;
+  projectName: string;
+  repositoryId?: string;
+  repositoryName: string;
+  trigger: string;
+  status: BackupRunStatus;
+  phase: BackupPhase;
+  volumes: string[];
+  filesTotal: number;
+  bytesTotal: number;
+  bytesAdded: number;
+  warnings: string[];
+  error?: string;
+  startedAt: string;
+  endedAt?: string;
+  createdAt: string;
+  /** Only present when the run produced a snapshot that verified. */
+  snapshot?: BackupSnapshot;
+}
+
 export interface RepositoryCheckResult {
   status: RepositoryStatus;
   snapshotCount: number;
@@ -246,6 +329,16 @@ export const api = {
       body: JSON.stringify({ passphrase }),
     }),
   lockSecretStore: () => request<void>("/api/v1/secrets/lock", { method: "POST" }),
+
+  startBackup: (projectId: string, repositoryId: string) =>
+    request<BackupRun>(`/api/v1/projects/${projectId}/backup`, {
+      method: "POST",
+      body: JSON.stringify({ repositoryId }),
+    }),
+  listBackupRuns: (limit = 25) => request<BackupRun[]>(`/api/v1/backups?limit=${limit}`),
+  getBackupRun: (id: string) => request<BackupRun>(`/api/v1/backups/${id}`),
+  cancelBackupRun: (id: string) =>
+    request<void>(`/api/v1/backups/${id}/cancel`, { method: "POST" }),
 
   listRepositories: () => request<Repository[]>("/api/v1/repositories"),
   repositoryLocations: () =>

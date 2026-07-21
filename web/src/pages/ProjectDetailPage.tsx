@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ComingSoon } from "@/components/ComingSoon";
+import { BackupPanel } from "@/components/BackupPanel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Timestamp } from "@/components/Timestamp";
 import { api } from "@/lib/api";
@@ -88,6 +89,10 @@ export function ProjectDetailPage() {
               <AlertDescription>{project.dockerWarning}</AlertDescription>
             </Alert>
           )}
+
+          {/* First on the page: whether this project is backed up is the
+              question someone opens it to answer. */}
+          <BackupPanel project={project} />
 
           <Card>
             <CardHeader>

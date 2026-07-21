@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -13,12 +15,14 @@ import (
 
 	"github.com/Cod3ioCH/Back-Orbit/internal/auth"
 	"github.com/Cod3ioCH/Back-Orbit/internal/backup"
+	"github.com/Cod3ioCH/Back-Orbit/internal/backuprun"
 	"github.com/Cod3ioCH/Back-Orbit/internal/config"
 	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
 	"github.com/Cod3ioCH/Back-Orbit/internal/events"
 	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 	"github.com/Cod3ioCH/Back-Orbit/internal/repositories"
 	"github.com/Cod3ioCH/Back-Orbit/internal/secrets"
+	"github.com/Cod3ioCH/Back-Orbit/internal/storage"
 )
 
 // loginRateLimit configures the login brute-force protection: 5 failed
@@ -47,6 +51,7 @@ type Server struct {
 
 	secrets      *secrets.Store
 	repositories *repositories.Service
+	backups      *backuprun.Runner
 
 	eventStore  *events.Store
 	eventBroker *events.Broker
@@ -80,6 +85,15 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 
 	engine := backup.NewResticEngine("")
 
+	projectService := projects.NewService(db, dockerClient, recorder)
+	repositoryService := repositories.NewService(db, secretStore, engine, recorder,
+		repositories.NewLocations(cfg.DataDir, cfg.BackupDir))
+
+	// Staging materialises a full copy of each volume, so it lives beside the
+	// database rather than in the backup destination: a half-staged copy must
+	// never end up somewhere that looks like a backup.
+	stager := storage.NewStager(dockerClient, "")
+
 	return &Server{
 		cfg: cfg,
 		auth: &auth.Authenticator{
@@ -91,17 +105,29 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 		sessions:     sessions,
 		rateLimiter:  auth.NewLoginRateLimiter(loginMaxAttempts, loginWindow, loginMaxBackoff),
 		dockerClient: dockerClient,
-		projects:     projects.NewService(db, dockerClient, recorder),
+		projects:     projectService,
 		secrets:      secretStore,
-		repositories: repositories.NewService(db, secretStore, engine, recorder,
-			repositories.NewLocations(cfg.DataDir, cfg.BackupDir)),
-		eventStore:   eventStore,
-		eventBroker:  eventBroker,
-		recorder:     recorder,
-		staticFS:     staticFS,
-		db:           db,
-		shutdown:     make(chan struct{}),
+		repositories: repositoryService,
+		backups: backuprun.NewRunner(db, projectService, repositoryService, stager, engine, recorder,
+			filepath.Join(cfg.DataDir, "staging")),
+		eventStore:  eventStore,
+		eventBroker: eventBroker,
+		recorder:    recorder,
+		staticFS:    staticFS,
+		db:          db,
+		shutdown:    make(chan struct{}),
 	}
+}
+
+// CloseInterruptedRuns fails any backup left marked running by a process that
+// stopped mid-run, and reports how many were closed out.
+//
+// Nothing else can: a run lives on a goroutine, so a killed process leaves the
+// row claiming to be in progress forever. That reads as "a backup is running",
+// which is the most misleading thing this UI could say about a backup that
+// never finished.
+func (s *Server) CloseInterruptedRuns(ctx context.Context) (int64, error) {
+	return s.backups.CloseInterruptedRuns(ctx)
 }
 
 // Shutdown signals long-lived handlers (the SSE activity stream) to stop.
@@ -143,6 +169,13 @@ func (s *Server) Router() http.Handler {
 			r.Post("/projects", s.handleRegisterProject)
 			r.Post("/projects/scan", s.handleScanProjects)
 			r.Get("/projects/{id}", s.handleGetProject)
+			r.Post("/projects/{id}/backup", s.handleStartBackup)
+
+			r.Route("/backups", func(r chi.Router) {
+				r.Get("/", s.handleListBackupRuns)
+				r.Get("/{id}", s.handleGetBackupRun)
+				r.Post("/{id}/cancel", s.handleCancelBackupRun)
+			})
 
 			r.Route("/secrets", func(r chi.Router) {
 				r.Get("/status", s.handleSecretStoreStatus)

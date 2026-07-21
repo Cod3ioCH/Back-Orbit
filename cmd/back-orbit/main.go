@@ -121,6 +121,15 @@ func run() error {
 
 	server := api.NewServer(cfg, db, dockerClient, secretStore, staticFS)
 
+	// A backup runs on a goroutine, so a process that was killed mid-run left
+	// its row saying "running". Closing those out here is what keeps the UI
+	// from showing a backup as in progress when nothing is running it.
+	if closed, err := server.CloseInterruptedRuns(context.Background()); err != nil {
+		slog.Error("could not close out backups interrupted by an earlier shutdown", "error", err)
+	} else if closed > 0 {
+		slog.Warn("marked backups as failed because an earlier run was interrupted", "count", closed)
+	}
+
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           server.Router(),

@@ -12,10 +12,13 @@ import {
   PencilLine,
   ShieldAlert,
   ShieldCheck,
+  CircleSlash,
+  Play,
+  XCircle,
 } from "lucide-react";
 import type { AuditEvent } from "@/lib/api";
 
-export type EventTone = "neutral" | "success" | "warning";
+export type EventTone = "neutral" | "success" | "warning" | "danger";
 
 interface EventPresentation {
   /** Human-readable label shown in the UI instead of the raw action id. */
@@ -57,6 +60,13 @@ const PRESENTATION: Record<string, EventPresentation> = {
   "repository.deleted": { label: "Repository removed", icon: HardDrive, tone: "warning" },
   "repository.initialized": { label: "Repository initialised", icon: HardDrive, tone: "success" },
   "repository.checked": { label: "Repository checked", icon: HardDrive, tone: "neutral" },
+
+  "backup.started": { label: "Backup started", icon: Play, tone: "neutral" },
+  // Success is claimed only for a backup whose snapshot was read back, so the
+  // wording says that rather than the weaker "completed".
+  "backup.completed": { label: "Backup verified", icon: ShieldCheck, tone: "success" },
+  "backup.failed": { label: "Backup failed", icon: XCircle, tone: "danger" },
+  "backup.cancelled": { label: "Backup cancelled", icon: CircleSlash, tone: "neutral" },
 };
 
 /**
@@ -104,4 +114,7 @@ export const TONE_CLASSES: Record<EventTone, string> = {
   neutral: "text-muted-foreground",
   success: "text-success",
   warning: "text-warning",
+  // A failed backup is not a caution — it means the protection someone
+  // believes they have does not exist.
+  danger: "text-destructive",
 };
