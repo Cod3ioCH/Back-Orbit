@@ -97,7 +97,7 @@ func run() error {
 		return err
 	}
 
-	server := api.NewServer(cfg, db, dockerClient, staticFS)
+	server := api.NewServer(cfg, db, dockerClient, secretStore, staticFS)
 
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,

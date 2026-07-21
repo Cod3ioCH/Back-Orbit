@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/Cod3ioCH/Back-Orbit/internal/config"
 	"github.com/Cod3ioCH/Back-Orbit/internal/dbtest"
 	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
+	"github.com/Cod3ioCH/Back-Orbit/internal/secrets"
 )
 
 // testClient wraps httptest's server with a cookie jar (so session and CSRF
@@ -36,7 +38,14 @@ func newTestServer(t *testing.T) *testClient {
 	}
 	fake := docker.NewFakeClient()
 
-	server := NewServer(cfg, db, fake, nil)
+	// Initialised and unlocked, so tests exercise the same state a running
+	// instance has after an unattended unlock.
+	secretStore := secrets.NewStore(db)
+	if err := secretStore.Initialize(context.Background(), "a-sufficiently-long-master-passphrase"); err != nil {
+		t.Fatalf("initialise secret store: %v", err)
+	}
+
+	server := NewServer(cfg, db, fake, secretStore, nil)
 	ts := httptest.NewServer(server.Router())
 	t.Cleanup(ts.Close)
 

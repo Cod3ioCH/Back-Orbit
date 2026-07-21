@@ -146,6 +146,46 @@ export interface AuditEvent {
   createdAt: string;
 }
 
+export interface SecretStoreStatus {
+  initialized: boolean;
+  unlocked: boolean;
+  /** Whether a master key file is configured, i.e. whether the store unlocks
+   *  itself after a restart. Without it, scheduled backups stop until someone
+   *  unlocks it by hand. */
+  unattendedUnlockConfigured: boolean;
+}
+
+/** Metadata only — the API has no shape that carries a secret's value. */
+export interface SecretMetadata {
+  id: string;
+  kind: string;
+  name: string;
+  keyVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RepositoryKind = "local" | "sftp" | "s3";
+export type RepositoryStatus = "unknown" | "uninitialized" | "ready" | "error";
+
+export interface Repository {
+  id: string;
+  name: string;
+  kind: RepositoryKind;
+  location: string;
+  status: RepositoryStatus;
+  lastError?: string;
+  lastCheckedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RepositoryCheckResult {
+  status: RepositoryStatus;
+  snapshotCount: number;
+  error?: string;
+}
+
 export const api = {
   setupStatus: () => request<SetupStatus>("/api/v1/setup/status"),
   setupAdmin: (username: string, password: string) =>
@@ -179,4 +219,35 @@ export const api = {
 
   listAudit: (limit = 50) =>
     request<AuditEvent[]>(`/api/v1/audit?limit=${limit}`),
+
+  secretStoreStatus: () => request<SecretStoreStatus>("/api/v1/secrets/status"),
+  initializeSecretStore: (passphrase: string) =>
+    request<void>("/api/v1/secrets/initialize", {
+      method: "POST",
+      body: JSON.stringify({ passphrase }),
+    }),
+  unlockSecretStore: (passphrase: string) =>
+    request<void>("/api/v1/secrets/unlock", {
+      method: "POST",
+      body: JSON.stringify({ passphrase }),
+    }),
+  lockSecretStore: () => request<void>("/api/v1/secrets/lock", { method: "POST" }),
+
+  listRepositories: () => request<Repository[]>("/api/v1/repositories"),
+  createRepository: (input: {
+    name: string;
+    kind: RepositoryKind;
+    location: string;
+    password: string;
+  }) =>
+    request<Repository>("/api/v1/repositories", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  deleteRepository: (id: string) =>
+    request<void>(`/api/v1/repositories/${id}`, { method: "DELETE" }),
+  checkRepository: (id: string) =>
+    request<RepositoryCheckResult>(`/api/v1/repositories/${id}/check`, { method: "POST" }),
+  initializeRepository: (id: string) =>
+    request<void>(`/api/v1/repositories/${id}/initialize`, { method: "POST" }),
 };

@@ -23,6 +23,18 @@ const (
 	ActionProjectUpdated    Action = "project.updated"
 	ActionProjectRemoved    Action = "project.removed"
 	ActionProjectScanned    Action = "project.scanned"
+
+	// Secret store transitions are security-relevant in themselves: an unlock
+	// is the moment every stored credential becomes readable, so when it
+	// happened and who caused it belongs in the audit trail.
+	ActionSecretStoreInitialized Action = "secrets.store_initialized"
+	ActionSecretStoreUnlocked    Action = "secrets.store_unlocked"
+	ActionSecretStoreLocked      Action = "secrets.store_locked"
+
+	ActionRepositoryCreated     Action = "repository.created"
+	ActionRepositoryDeleted     Action = "repository.deleted"
+	ActionRepositoryInitialized Action = "repository.initialized"
+	ActionRepositoryChecked     Action = "repository.checked"
 )
 
 // Event is a single audit/activity record.

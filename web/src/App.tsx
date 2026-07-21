@@ -8,6 +8,7 @@ import { OverviewPage } from "@/pages/OverviewPage";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectDetailPage } from "@/pages/ProjectDetailPage";
 import { ActivityPage } from "@/pages/ActivityPage";
+import { RepositoriesPage } from "@/pages/RepositoriesPage";
 
 export default function App() {
   return (
@@ -47,15 +48,7 @@ export default function App() {
               />
             }
           />
-          <Route
-            path="repositories"
-            element={
-              <ComingSoon
-                title="Repositories"
-                description="Configuring local, SFTP, and S3-compatible backup repositories arrives in a later phase."
-              />
-            }
-          />
+          <Route path="repositories" element={<RepositoriesPage />} />
           <Route path="activity" element={<ActivityPage />} />
           <Route
             path="secrets"

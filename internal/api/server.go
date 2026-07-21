@@ -12,10 +12,13 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/Cod3ioCH/Back-Orbit/internal/auth"
+	"github.com/Cod3ioCH/Back-Orbit/internal/backup"
 	"github.com/Cod3ioCH/Back-Orbit/internal/config"
 	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
 	"github.com/Cod3ioCH/Back-Orbit/internal/events"
 	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
+	"github.com/Cod3ioCH/Back-Orbit/internal/repositories"
+	"github.com/Cod3ioCH/Back-Orbit/internal/secrets"
 )
 
 // loginRateLimit configures the login brute-force protection: 5 failed
@@ -42,6 +45,9 @@ type Server struct {
 	dockerClient docker.Client
 	projects     *projects.Service
 
+	secrets      *secrets.Store
+	repositories *repositories.Service
+
 	eventStore  *events.Store
 	eventBroker *events.Broker
 	recorder    *events.Recorder
@@ -60,13 +66,19 @@ type Server struct {
 // NewServer wires up a Server from its dependencies. dockerClient may be
 // nil (Docker discovery disabled); staticFS may be nil (no frontend build
 // embedded, e.g. in local dev where Vite serves the frontend separately).
-func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, staticFS fs.FS) *Server {
+//
+// secretStore is passed in rather than constructed here because startup may
+// already have unlocked it from a key file, and that unlocked state must be
+// the same object the API serves from.
+func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secretStore *secrets.Store, staticFS fs.FS) *Server {
 	users := auth.NewUserStore(db)
 	sessions := auth.NewSessionStore(db, cfg.SessionTTL)
 
 	eventStore := events.NewStore(db)
 	eventBroker := events.NewBroker()
 	recorder := events.NewRecorder(eventStore, eventBroker)
+
+	engine := backup.NewResticEngine("")
 
 	return &Server{
 		cfg: cfg,
@@ -80,6 +92,8 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, static
 		rateLimiter:  auth.NewLoginRateLimiter(loginMaxAttempts, loginWindow, loginMaxBackoff),
 		dockerClient: dockerClient,
 		projects:     projects.NewService(db, dockerClient, recorder),
+		secrets:      secretStore,
+		repositories: repositories.NewService(db, secretStore, engine, recorder),
 		eventStore:   eventStore,
 		eventBroker:  eventBroker,
 		recorder:     recorder,
@@ -128,6 +142,23 @@ func (s *Server) Router() http.Handler {
 			r.Post("/projects", s.handleRegisterProject)
 			r.Post("/projects/scan", s.handleScanProjects)
 			r.Get("/projects/{id}", s.handleGetProject)
+
+			r.Route("/secrets", func(r chi.Router) {
+				r.Get("/status", s.handleSecretStoreStatus)
+				r.Post("/initialize", s.handleSecretStoreInitialize)
+				r.Post("/unlock", s.handleSecretStoreUnlock)
+				r.Post("/lock", s.handleSecretStoreLock)
+				r.Get("/", s.handleListSecrets)
+			})
+
+			r.Route("/repositories", func(r chi.Router) {
+				r.Get("/", s.handleListRepositories)
+				r.Post("/", s.handleCreateRepository)
+				r.Get("/{id}", s.handleGetRepository)
+				r.Delete("/{id}", s.handleDeleteRepository)
+				r.Post("/{id}/check", s.handleCheckRepository)
+				r.Post("/{id}/initialize", s.handleInitializeRepository)
+			})
 
 			r.Get("/audit", s.handleListAudit)
 			r.Get("/activity/stream", s.handleActivityStream)

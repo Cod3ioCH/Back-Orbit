@@ -1,14 +1,17 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  Activity,
   FolderPlus,
   FolderSearch,
   FolderX,
+  HardDrive,
+  Lock,
+  LockOpen,
   LogIn,
   LogOut,
   PencilLine,
   ShieldAlert,
   ShieldCheck,
-  Activity,
 } from "lucide-react";
 import type { AuditEvent } from "@/lib/api";
 
@@ -39,6 +42,21 @@ const PRESENTATION: Record<string, EventPresentation> = {
   "project.updated": { label: "Project updated", icon: PencilLine, tone: "neutral" },
   "project.removed": { label: "Project removed", icon: FolderX, tone: "warning" },
   "project.scanned": { label: "Scanned for projects", icon: FolderSearch, tone: "neutral" },
+
+  // An unlock is the moment every stored credential becomes readable, so it
+  // is worth spotting in the feed rather than blending in.
+  "secrets.store_initialized": {
+    label: "Secret store set up",
+    icon: ShieldCheck,
+    tone: "success",
+  },
+  "secrets.store_unlocked": { label: "Secret store unlocked", icon: LockOpen, tone: "warning" },
+  "secrets.store_locked": { label: "Secret store locked", icon: Lock, tone: "neutral" },
+
+  "repository.created": { label: "Repository added", icon: HardDrive, tone: "success" },
+  "repository.deleted": { label: "Repository removed", icon: HardDrive, tone: "warning" },
+  "repository.initialized": { label: "Repository initialised", icon: HardDrive, tone: "success" },
+  "repository.checked": { label: "Repository checked", icon: HardDrive, tone: "neutral" },
 };
 
 /**

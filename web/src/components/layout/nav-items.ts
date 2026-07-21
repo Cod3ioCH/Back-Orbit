@@ -32,7 +32,7 @@ export const navItems: NavItem[] = [
   { to: "/plans", label: "Backup Plans", icon: CalendarClock },
   { to: "/snapshots", label: "Snapshots", icon: Camera },
   { to: "/restore", label: "Restore", icon: History },
-  { to: "/repositories", label: "Repositories", icon: HardDrive },
+  { to: "/repositories", label: "Repositories", icon: HardDrive, available: true },
   { to: "/activity", label: "Activity", icon: Activity, available: true },
   { to: "/secrets", label: "Secrets", icon: KeyRound },
   { to: "/alerts", label: "Alerts", icon: Bell },
