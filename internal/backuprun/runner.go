@@ -170,7 +170,7 @@ func (r *Runner) Start(ctx context.Context, req StartRequest) (Run, error) {
 		TargetType:  "backup_run",
 		TargetID:    run.ID,
 		Metadata: map[string]any{
-			"project": project.Name, "repository": repository.Name, "volumes": len(volumes),
+			"project": project.Name, "projectId": project.ID, "repository": repository.Name, "volumes": len(volumes),
 		},
 	})
 
@@ -430,11 +430,12 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 		TargetType:  "backup_run",
 		TargetID:    run.ID,
 		Metadata: map[string]any{
-			"project":  run.ProjectName,
-			"snapshot": snapshotResult.SnapshotID,
-			"files":    run.FilesTotal,
-			"warnings": len(run.Warnings),
-			"verified": true,
+			"project":   run.ProjectName,
+			"projectId": run.ProjectID,
+			"snapshot":  snapshotResult.SnapshotID,
+			"files":     run.FilesTotal,
+			"warnings":  len(run.Warnings),
+			"verified":  true,
 		},
 	})
 }
@@ -469,7 +470,7 @@ func (r *Runner) finishFailed(ctx context.Context, run *Run, err error, actorUse
 		ActorUserID: actorUserID,
 		TargetType:  "backup_run",
 		TargetID:    run.ID,
-		Metadata:    map[string]any{"project": run.ProjectName, "error": run.Error},
+		Metadata:    map[string]any{"project": run.ProjectName, "projectId": run.ProjectID, "error": run.Error},
 	})
 }
 
@@ -486,7 +487,7 @@ func (r *Runner) finishCancelled(ctx context.Context, run *Run, actorUserID stri
 		ActorUserID: actorUserID,
 		TargetType:  "backup_run",
 		TargetID:    run.ID,
-		Metadata:    map[string]any{"project": run.ProjectName},
+		Metadata:    map[string]any{"project": run.ProjectName, "projectId": run.ProjectID},
 	})
 }
 

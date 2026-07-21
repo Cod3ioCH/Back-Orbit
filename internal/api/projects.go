@@ -127,3 +127,16 @@ func (s *Server) handleScanProjects(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{"projects": records})
 }
+
+func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
+	user, _ := auth.UserFromContext(r.Context())
+	if err := s.projects.Remove(r.Context(), user.ID, chi.URLParam(r, "id")); err != nil {
+		if errors.Is(err, projects.ErrProjectNotFound) {
+			writeError(w, http.StatusNotFound, "project not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to remove project")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

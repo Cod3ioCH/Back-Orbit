@@ -59,6 +59,21 @@ func TestRegisterDetectsComposeOverrides(t *testing.T) {
 	}
 }
 
+func TestRemoveOnlyDeletesProjectRegistration(t *testing.T) {
+	svc := newTestService(t, nil)
+	ctx := context.Background()
+	record, err := svc.Register(ctx, "", "remove-me", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Remove(ctx, "", record.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Get(ctx, record.ID); err != ErrProjectNotFound {
+		t.Fatalf("expected project to be removed, got %v", err)
+	}
+}
+
 func TestRegisterRejectsRelativePath(t *testing.T) {
 	svc := newTestService(t, nil)
 

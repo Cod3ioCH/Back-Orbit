@@ -186,6 +186,19 @@ func TestFullSetupLoginProjectFlow(t *testing.T) {
 	}
 	resp.Body.Close()
 
+	// Removing a project only removes its registration and is authenticated,
+	// CSRF-protected, and auditable like every destructive API operation.
+	resp = client.do(http.MethodDelete, "/api/v1/projects/"+projectID, nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204 removing project, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	resp = client.do(http.MethodGet, "/api/v1/projects/"+projectID, nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected removed project to return 404, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
 	// Logout.
 	resp = client.do(http.MethodPost, "/api/v1/auth/logout", nil)
 	if resp.StatusCode != http.StatusNoContent {

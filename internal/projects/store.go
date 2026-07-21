@@ -133,6 +133,21 @@ func (s *store) update(ctx context.Context, record Record) error {
 	return nil
 }
 
+func (s *store) delete(ctx context.Context, id string) error {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete project: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count deleted projects: %w", err)
+	}
+	if count == 0 {
+		return ErrProjectNotFound
+	}
+	return nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

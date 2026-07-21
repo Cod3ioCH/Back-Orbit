@@ -371,6 +371,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ name, path }),
     }),
+  removeProject: (id: string) => request<void>(`/api/v1/projects/${id}`, { method: "DELETE" }),
   scanProjects: () =>
     request<{ projects: ProjectRecord[]; warning?: string }>(
       "/api/v1/projects/scan",

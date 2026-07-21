@@ -173,6 +173,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/projects", s.handleRegisterProject)
 			r.Post("/projects/scan", s.handleScanProjects)
 			r.Get("/projects/{id}", s.handleGetProject)
+			r.Delete("/projects/{id}", s.handleDeleteProject)
 			r.Get("/projects/{id}/blueprint", s.handleGetProjectBlueprint)
 			r.Post("/projects/{id}/analyze", s.handleAnalyzeProject)
 			r.Post("/projects/{id}/blueprint/confirm", s.handleConfirmProjectBlueprint)

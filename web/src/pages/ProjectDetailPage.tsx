@@ -6,17 +6,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ComingSoon } from "@/components/ComingSoon";
 import { BackupPanel } from "@/components/BackupPanel";
 import { ProtectionBlueprint } from "@/components/ProtectionBlueprint";
 import { ProtectionSummary } from "@/components/ProtectionSummary";
+import { ConfigurationTab, DatabasesTab, ProjectActivityTab, ProjectSettingsTab, SnapshotsTab, VolumesTab } from "@/components/ProjectTabs";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Timestamp } from "@/components/Timestamp";
 import { api } from "@/lib/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { cn } from "@/lib/utils";
 
-const PLACEHOLDER_TABS = [
+const PROJECT_TABS = [
   { value: "configuration", label: "Configuration" },
   { value: "volumes", label: "Volumes" },
   { value: "databases", label: "Databases" },
@@ -78,11 +78,8 @@ export function ProjectDetailPage() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="blueprint">Blueprint</TabsTrigger>
-          {/* Only Overview carries real data in this phase; the rest are
-              dimmed so the tab bar says what is ready instead of making
-              people find out by clicking. */}
-          {PLACEHOLDER_TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} className="opacity-60">
+          {PROJECT_TABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
               {tab.label}
             </TabsTrigger>
           ))}
@@ -221,40 +218,22 @@ export function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="configuration">
-          <ComingSoon
-            title="Configuration"
-            description="Selecting bind mounts, config files, and include/exclude rules arrives with backup plans in a later phase."
-          />
+          <ConfigurationTab project={project} />
         </TabsContent>
         <TabsContent value="volumes">
-          <ComingSoon
-            title="Volume backup selection"
-            description="Choosing which named volumes to back up arrives with the backup engine in a later phase."
-          />
+          <VolumesTab project={project} />
         </TabsContent>
         <TabsContent value="databases">
-          <ComingSoon
-            title="Database detection"
-            description="Automatic database container detection arrives with the database adapters in a later phase."
-          />
+          <DatabasesTab projectId={project.id} />
         </TabsContent>
         <TabsContent value="snapshots">
-          <ComingSoon
-            title="Snapshots"
-            description="Snapshot history for this project arrives once the backup engine is implemented."
-          />
+          <SnapshotsTab projectId={project.id} />
         </TabsContent>
         <TabsContent value="activity">
-          <ComingSoon
-            title="Project activity"
-            description="A project-scoped activity feed arrives in a later phase — see the global Activity page for now."
-          />
+          <ProjectActivityTab projectId={project.id} />
         </TabsContent>
         <TabsContent value="settings">
-          <ComingSoon
-            title="Project settings"
-            description="Renaming, re-pathing, and removing projects arrives in a later phase."
-          />
+          <ProjectSettingsTab project={project} />
         </TabsContent>
       </Tabs>
     </div>
