@@ -53,6 +53,7 @@ func TestSystemMountsAreListedButSkipped(t *testing.T) {
 	cases := []string{
 		"/var/run/docker.sock",
 		"/run/docker.sock",
+		"/run/host-services/docker.proxy.sock",
 		"/etc/localtime",
 		"/proc",
 		"/sys/fs/cgroup",
@@ -77,6 +78,16 @@ func TestSystemMountsAreListedButSkipped(t *testing.T) {
 				t.Error("a skipped source must say why, or it looks like an omission")
 			}
 		})
+	}
+}
+
+func TestDockerDesktopSocketIsSkippedByContainerDestination(t *testing.T) {
+	sources := BackupSources(detailWith(docker.Mount{Type: "bind", Source: "/unknown/docker-desktop/socket", Destination: "/var/run/docker.sock"}))
+	if len(sources) != 1 || sources[0].Backupable() {
+		t.Fatalf("Docker socket must be listed but excluded: %#v", sources)
+	}
+	if sources[0].Skipped != "this is the Docker socket, not application data" {
+		t.Fatalf("unexpected reason: %q", sources[0].Skipped)
 	}
 }
 
