@@ -74,14 +74,47 @@ docs/                             This documentation
 
 ## Implementation phases
 
-1. **Phase 1 (this repository)** — backend/frontend scaffold, SQLite migrations, admin setup, login/session, Docker connection + Compose project discovery, project UI, event/audit model, dev Compose environment, tests.
-2. Repositories (local/SFTP/S3) + secret store + restic engine wrapper.
-3. Backup plans + scheduler + job engine + SSE.
-4. Volume/bind-mount backup (helper containers) + snapshot manifest.
-5. Database adapters (PostgreSQL/MySQL/MariaDB).
-6. Restore engine + wizard + dry run.
-7. Retention + health score + monitoring/alerts/notifications.
-8. CLI.
-9. Hardening, full documentation, disaster-recovery test guide, remote-agent polish.
+The phases are deliberately **vertical**: each one ends with something a user
+can actually do end to end, rather than a horizontal layer that only becomes
+useful once the layer above it lands.
+
+An earlier draft of this plan built all repository types, then scheduling,
+then volume handling, then databases, and only then restore. That ordering was
+abandoned because it postponed the single property a backup product lives or
+dies by — *can I get my data back* — until after five phases had been built on
+the assumption that it would work. Restore is now proven in the first phase
+that writes any data at all, and later phases broaden a spine that is already
+known to work.
+
+1. **Phase 1 (done)** — backend/frontend scaffold, SQLite migrations, admin
+   setup, login/session, Docker connection + Compose project discovery,
+   project UI, event/audit model, dev Compose environment, tests.
+2. **Phase 2 (in progress)** — one project backed up and restored, for real:
+   the restic engine wrapper *(done — including the pinned, checksum-verified
+   restic binary in the image)*, the encrypted secret store, a local
+   repository, named-volume staging via a helper container, a manual "back up
+   now", and a restore of that snapshot. Deliberately narrow on every axis so
+   the whole path is exercised.
+3. Broaden storage: SFTP and S3 repositories, repository health and locking.
+4. Backup plans + scheduler + job engine + live job progress over SSE.
+5. Snapshot manifest + bind mounts + include/exclude rules.
+6. Database adapters (PostgreSQL/MySQL/MariaDB) with consistent dumps.
+7. Restore wizard: dry run, impact preview, guided full-project restore.
+8. Retention + health score + monitoring/alerts/notifications.
+9. CLI, then hardening, full documentation and the disaster-recovery test
+   guide.
+
+Two constraints that shape the order:
+
+- **Unattended unlock ships with the secret store, not after it.** If the
+  store can only be unlocked interactively, then after any restart — an
+  update, a host reboot, a crash — the scheduler cannot decrypt repository
+  passwords and every scheduled backup silently stops while the UI still
+  reports the projects as protected. That failure mode is worse than having no
+  scheduling at all, so the unattended path (Docker secret or key file) is a
+  precondition for scheduling, not a later convenience.
+- **A backup is not done until it has been verified.** Verification is part of
+  the phase that creates snapshots rather than a later monitoring feature; an
+  unverified backup is a hope, not a recovery point.
 
 See `docs/adr/` for the architecture decisions behind these choices.
