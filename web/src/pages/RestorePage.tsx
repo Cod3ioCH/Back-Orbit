@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArchiveRestore, Boxes, CheckCircle2, Copy, FolderOutput, Loader2, ShieldAlert, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ const modes: {id:RestoreMode;title:string;description:string;icon:typeof FolderO
 const fmt=(n:number)=>new Intl.NumberFormat("en",{style:"unit",unit:"byte",notation:"compact",unitDisplay:"narrow"}).format(n);
 
 export function RestorePage(){
-  usePageTitle("Restore"); const qc=useQueryClient(); const [snapshotId,setSnapshotId]=useState("");const [mode,setMode]=useState<RestoreMode>("extract");const [name,setName]=useState("");
+  usePageTitle("Restore"); const qc=useQueryClient(); const [searchParams]=useSearchParams(); const [snapshotId,setSnapshotId]=useState(()=>searchParams.get("snapshot")??"");const [mode,setMode]=useState<RestoreMode>("extract");const [name,setName]=useState("");
   const backups=useQuery({queryKey:["backups",100],queryFn:()=>api.listBackupRuns(100)});const snapshots=useMemo(()=>backups.data?.flatMap(r=>r.snapshot?[{...r.snapshot,projectName:r.projectName,repositoryName:r.repositoryName}]:[])??[],[backups.data]);
   const preview=useMutation({mutationFn:()=>api.previewRestore(snapshotId,mode,name)});
   const start=useMutation({mutationFn:()=>api.startRestore(snapshotId,mode,name),onSuccess:()=>{toast.success("Restore started in an isolated directory");qc.invalidateQueries({queryKey:["restores"]})},onError:(e)=>toast.error(e.message)});

@@ -10,6 +10,7 @@ import { ProjectDetailPage } from "@/pages/ProjectDetailPage";
 import { ActivityPage } from "@/pages/ActivityPage";
 import { RepositoriesPage } from "@/pages/RepositoriesPage";
 import { RestorePage } from "@/pages/RestorePage";
+import { SnapshotsPage } from "@/pages/SnapshotsPage";
 
 export default function App() {
   return (
@@ -31,15 +32,7 @@ export default function App() {
               />
             }
           />
-          <Route
-            path="snapshots"
-            element={
-              <ComingSoon
-                title="Snapshots"
-                description="Browse and verify snapshots once the backup engine is implemented."
-              />
-            }
-          />
+          <Route path="snapshots" element={<SnapshotsPage />} />
           <Route path="restore" element={<RestorePage />} />
           <Route path="repositories" element={<RepositoriesPage />} />
           <Route path="activity" element={<ActivityPage />} />
