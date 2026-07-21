@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
+import { DestinationPicker } from "@/components/DestinationPicker";
 import { Timestamp } from "@/components/Timestamp";
 import {
   api,
@@ -150,29 +150,12 @@ export function BackupPanel({ project }: { project: ProjectDetail }) {
             Cancel
           </Button>
         ) : (
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="space-y-1">
-              <Label htmlFor="backup-repository" className="text-xs text-muted-foreground">
-                Destination
-              </Label>
-              <select
-                id="backup-repository"
-                value={selected}
-                onChange={(event) => setRepositoryId(event.target.value)}
-                disabled={ready.length === 0}
-                className="h-9 rounded-lg border border-border bg-background px-3 text-sm disabled:opacity-50"
-              >
-                {ready.length === 0 ? (
-                  <option value="">No ready repository</option>
-                ) : (
-                  ready.map((repo) => (
-                    <option key={repo.id} value={repo.id}>
-                      {repo.name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <DestinationPicker
+              repositories={ready}
+              value={selected}
+              onChange={setRepositoryId}
+            />
             <Button
               size="sm"
               onClick={() => startMutation.mutate(selected)}
