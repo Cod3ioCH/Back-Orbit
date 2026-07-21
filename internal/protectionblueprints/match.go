@@ -3,6 +3,8 @@ package protectionblueprints
 import (
 	"sort"
 	"strings"
+
+	"github.com/Cod3ioCH/Back-Orbit/internal/imageref"
 )
 
 // Evidence is the secret-free project evidence accepted by the matcher.
@@ -32,7 +34,7 @@ type Result struct {
 // eligible only when every required service role and technology is evidenced;
 // weak optional hints can improve ranking but can never manufacture a match.
 func (c Catalog) Match(evidence Evidence) []Result {
-	images := repositoryPaths(evidence.Images)
+	images := imageref.RepositoryPaths(evidence.Images)
 	technologies := normalize(evidence.Technologies)
 	results := make([]Result, 0)
 	for _, template := range c.Templates {
@@ -146,7 +148,7 @@ func assign(images []string, groups [][]string) ([]int, bool) {
 	var augment func(role int, visited []bool) bool
 	augment = func(role int, visited []bool) bool {
 		for index, image := range images {
-			if visited[index] || !imageMatches(image, groups[role]) {
+			if visited[index] || !imageref.MatchesAny(image, groups[role]) {
 				continue
 			}
 			visited[index] = true
@@ -169,87 +171,13 @@ func assign(images []string, groups [][]string) ([]int, bool) {
 	return assigned, complete
 }
 
-// imageMatches reports whether a repository path satisfies any pattern in a
-// group.
-func imageMatches(path string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if matchesPattern(path, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
 func anyImageMatches(paths []string, patterns []string) bool {
 	for _, path := range paths {
-		if imageMatches(path, patterns) {
+		if imageref.MatchesAny(path, patterns) {
 			return true
 		}
 	}
 	return false
-}
-
-// matchesPattern compares a pattern against a repository path on whole path
-// segments, anchored at the end.
-//
-// Substring matching would be wrong in both directions: "mongo" would claim
-// the "mongo-express" container, leaving the admin UI role with nothing and
-// the template unmatched, and a registry host that happens to contain a
-// product name would match anything published under it. Anchoring at the end
-// keeps "postgres" matching "ghcr.io/immich-app/postgres" while refusing
-// "mongo-express".
-func matchesPattern(path, pattern string) bool {
-	pattern = strings.Trim(strings.ToLower(strings.TrimSpace(pattern)), "/")
-	if pattern == "" || path == "" {
-		return false
-	}
-	if path == pattern {
-		return true
-	}
-	return strings.HasSuffix(path, "/"+pattern)
-}
-
-// repositoryPaths reduces image references to their repository path: no
-// registry host, no tag, no digest, lower case.
-func repositoryPaths(images []string) []string {
-	out := make([]string, 0, len(images))
-	for _, image := range images {
-		if path := repositoryPath(image); path != "" {
-			out = append(out, path)
-		}
-	}
-	return out
-}
-
-// repositoryPath turns "ghcr.io/immich-app/immich-server:v2.7.5" into
-// "immich-app/immich-server", and "docker.io/library/postgres" into
-// "library/postgres".
-func repositoryPath(image string) string {
-	image = strings.ToLower(strings.TrimSpace(image))
-	if image == "" {
-		return ""
-	}
-	if at := strings.Index(image, "@"); at >= 0 {
-		image = image[:at]
-	}
-	// A colon after the last slash is a tag; before it, a registry port.
-	if slash := strings.LastIndex(image, "/"); slash >= 0 {
-		if colon := strings.Index(image[slash:], ":"); colon >= 0 {
-			image = image[:slash+colon]
-		}
-	} else if colon := strings.Index(image, ":"); colon >= 0 {
-		image = image[:colon]
-	}
-
-	// Docker's own rule for telling a registry host from a namespace: the
-	// first component has a dot or a port, or is localhost.
-	if slash := strings.Index(image, "/"); slash > 0 {
-		head := image[:slash]
-		if strings.ContainsAny(head, ".:") || head == "localhost" {
-			image = image[slash+1:]
-		}
-	}
-	return strings.Trim(image, "/")
 }
 
 func normalize(values []string) []string {

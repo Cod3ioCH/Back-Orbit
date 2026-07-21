@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Cod3ioCH/Back-Orbit/internal/imageref"
 )
 
 //go:embed catalog/*.yaml
@@ -143,20 +145,13 @@ func validate(template Template) error {
 			// Patterns are compared against a repository path, so a tag or a
 			// digest in one can never match and would silently disable the
 			// rule it belongs to.
-			if strings.ContainsAny(lastSegment(pattern), ":@") {
+			if strings.ContainsAny(imageref.LastSegment(pattern), ":@") {
 				return fmt.Errorf("template %q pattern %q carries a tag or digest; use the repository path alone",
 					template.Metadata.ID, pattern)
 			}
 		}
 	}
 	return nil
-}
-
-func lastSegment(pattern string) string {
-	if slash := strings.LastIndex(pattern, "/"); slash >= 0 {
-		return pattern[slash+1:]
-	}
-	return pattern
 }
 
 func validID(value string) bool {

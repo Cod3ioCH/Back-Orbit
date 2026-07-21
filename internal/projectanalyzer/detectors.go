@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Cod3ioCH/Back-Orbit/internal/imageref"
 )
 
 type databaseDetector struct{}
@@ -12,7 +14,11 @@ func (databaseDetector) ID() string { return "databases" }
 
 type databaseSignature struct {
 	technology, method, consistency string
-	images, env                     []string
+	// imagePatterns are repository paths, compared against an image reference
+	// stripped of its registry host and tag, on whole path segments. They are
+	// not substrings: "mongo" is MongoDB, and deliberately not the
+	// mongo-express admin UI sitting next to it.
+	imagePatterns, env []string
 	// dataDirs are the paths the engine keeps its files in. A service mounting
 	// one of these is storing that engine's data — which is the thing a backup
 	// actually cares about, and far stronger evidence than a name.
@@ -23,23 +29,31 @@ type databaseSignature struct {
 	genericDataDir bool
 }
 
+// databaseSignatures lists, per engine, the repositories that publish it.
+// Every pattern here names an image someone actually runs — a pattern that
+// matches nothing is a rule that can never fire, and nothing else in the code
+// would ever say so, which is what TestEverySignaturePatternMatchesARealImage
+// guards.
 var databaseSignatures = []databaseSignature{
 	{technology: "postgresql", method: "Create a logical dump with pg_dump before snapshotting persistent storage.", consistency: "application-consistent",
-		images: []string{"postgres", "timescale"}, env: []string{"POSTGRES_DB", "POSTGRES_USER", "PGDATA"},
-		dataDirs: []string{"/var/lib/postgresql/data", "/var/lib/postgresql"}},
+		imagePatterns: []string{"postgres", "timescale/timescaledb", "timescale/timescaledb-ha"},
+		env:           []string{"POSTGRES_DB", "POSTGRES_USER", "PGDATA"},
+		dataDirs:      []string{"/var/lib/postgresql/data", "/var/lib/postgresql"}},
 	{technology: "mariadb", method: "Create a logical dump with mariadb-dump before snapshotting persistent storage.", consistency: "application-consistent",
-		images: []string{"mariadb"}, env: []string{"MARIADB_DATABASE", "MARIADB_USER"},
+		imagePatterns: []string{"mariadb"}, env: []string{"MARIADB_DATABASE", "MARIADB_USER"},
 		dataDirs: []string{"/var/lib/mysql"}},
 	{technology: "mysql", method: "Create a logical dump with mysqldump before snapshotting persistent storage.", consistency: "application-consistent",
-		images: []string{"mysql", "percona"}, env: []string{"MYSQL_DATABASE", "MYSQL_USER"},
-		dataDirs: []string{"/var/lib/mysql"}},
+		imagePatterns: []string{"mysql", "mysql/mysql-server", "percona", "percona/percona-server", "percona/percona-xtradb-cluster"},
+		env:           []string{"MYSQL_DATABASE", "MYSQL_USER"},
+		dataDirs:      []string{"/var/lib/mysql"}},
 	{technology: "mongodb", method: "Create a logical dump with mongodump; use replica-set aware options when available.", consistency: "application-consistent",
-		images: []string{"mongo"}, env: []string{"MONGO_INITDB_DATABASE", "MONGO_INITDB_ROOT_USERNAME"},
-		dataDirs: []string{"/data/db"}},
+		imagePatterns: []string{"mongo", "mongodb/mongodb-community-server"},
+		env:           []string{"MONGO_INITDB_DATABASE", "MONGO_INITDB_ROOT_USERNAME"},
+		dataDirs:      []string{"/data/db"}},
 	{technology: "valkey", method: "Persist data with a controlled SAVE/BGSAVE and capture the configured data directory.", consistency: "application-consistent",
-		images: []string{"valkey"}, dataDirs: []string{"/data"}, genericDataDir: true},
+		imagePatterns: []string{"valkey"}, dataDirs: []string{"/data"}, genericDataDir: true},
 	{technology: "redis", method: "Confirm whether Redis is durable or cache-only; for durable data run a controlled BGSAVE and capture RDB/AOF files.", consistency: "application-consistent",
-		images: []string{"redis"}, dataDirs: []string{"/data"}, genericDataDir: true},
+		imagePatterns: []string{"redis"}, dataDirs: []string{"/data"}, genericDataDir: true},
 }
 
 // dataMountFor returns the mount holding this engine's files, if the service
@@ -69,9 +83,12 @@ func dataMountFor(svc ServiceEvidence, sig databaseSignature) *MountEvidence {
 //
 // A service name is deliberately not evidence of a technology at all. "db"
 // says a database is likely; it does not say which engine, and inventing one
-// is a guess dressed up as a finding.
-func detectDatabase(svc ServiceEvidence, sig databaseSignature) (Finding, bool) {
-	imageMatch := containsAny(strings.ToLower(svc.Image), sig.images)
+// is a guess dressed up as a finding. Neither is a neighbouring tool that
+// carries an engine's name: repository is the image reference reduced to a
+// repository path so that mongo-express and postgres-exporter are recognised
+// as the different products they are, rather than as the engines they monitor.
+func detectDatabase(svc ServiceEvidence, repository string, sig databaseSignature) (Finding, bool) {
+	imageMatch := imageref.MatchesAny(repository, sig.imagePatterns)
 	dataMount := dataMountFor(svc, sig)
 
 	var (
@@ -146,23 +163,25 @@ func detectDatabase(svc ServiceEvidence, sig databaseSignature) (Finding, bool) 
 func (databaseDetector) Detect(input Input) []Finding {
 	var findings []Finding
 	for _, svc := range input.Services {
+		repository := imageref.RepositoryPath(svc.Image)
+
 		// When the image names an engine, that engine wins. MySQL and MariaDB
 		// share /var/lib/mysql, so without this a MySQL service also reports a
 		// probable MariaDB sitting on the same files — two databases where
 		// there is one, and a backup plan that would dump the wrong one.
 		imageIdentified := false
 		for _, sig := range databaseSignatures {
-			if containsAny(strings.ToLower(svc.Image), sig.images) {
+			if imageref.MatchesAny(repository, sig.imagePatterns) {
 				imageIdentified = true
 				break
 			}
 		}
 
 		for _, sig := range databaseSignatures {
-			if imageIdentified && !containsAny(strings.ToLower(svc.Image), sig.images) {
+			if imageIdentified && !imageref.MatchesAny(repository, sig.imagePatterns) {
 				continue
 			}
-			if finding, found := detectDatabase(svc, sig); found {
+			if finding, found := detectDatabase(svc, repository, sig); found {
 				findings = append(findings, finding)
 			}
 		}
@@ -230,14 +249,6 @@ func (metadataDetector) Detect(input Input) []Finding {
 
 func DefaultDetectors() []ProjectDetector {
 	return []ProjectDetector{databaseDetector{}, storageDetector{}, metadataDetector{}}
-}
-func containsAny(value string, candidates []string) bool {
-	for _, c := range candidates {
-		if strings.Contains(value, strings.ToLower(c)) {
-			return true
-		}
-	}
-	return false
 }
 func equalAny(value string, candidates []string) bool {
 	for _, c := range candidates {

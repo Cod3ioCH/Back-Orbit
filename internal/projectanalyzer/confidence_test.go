@@ -45,9 +45,13 @@ func TestConfidenceIsEarnedFromEvidence(t *testing.T) {
 	})
 
 	t.Run("an image name alone is only possible", func(t *testing.T) {
-		finding := only(t, detect(service("metrics", "prometheuscommunity/postgres-exporter:v0.15")))
+		// The engine's own image, with nothing corroborating that this service
+		// is the database: no data directory and no engine configuration. True
+		// of a real PostgreSQL whose volume is declared elsewhere, and equally
+		// true of a sidecar running pg_dump out of the same image.
+		finding := only(t, detect(service("maintenance", "postgres:17")))
 		if finding.Confidence != ConfidencePossible {
-			t.Fatalf("confidence = %q, want possible — an exporter holds no data", finding.Confidence)
+			t.Fatalf("confidence = %q, want possible — nothing corroborates the image", finding.Confidence)
 		}
 		if len(finding.Warnings) == 0 {
 			t.Error("a possible finding must say why it is uncertain")

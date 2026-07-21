@@ -3,6 +3,8 @@ package protectionblueprints
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Cod3ioCH/Back-Orbit/internal/imageref"
 )
 
 // TestARoleIsNotStolenByASimilarlyNamedImage.
@@ -130,52 +132,12 @@ func TestAFullyPresentTopologyScoresOneHundred(t *testing.T) {
 	}
 }
 
-// TestRegistryAndTagAreNotEvidence: a pattern must describe the image, not
-// happen to appear somewhere in its reference.
-func TestRegistryAndTagAreNotEvidence(t *testing.T) {
-	cases := map[string]struct {
-		path, pattern string
-		want          bool
-	}{
-		"plain image":                {"postgres", "postgres", true},
-		"official namespace":         {"library/postgres", "postgres", true},
-		"vendor registry":            {"immich-app/postgres", "postgres", true},
-		"different product":          {"mongo-express", "mongo", false},
-		"registry host lookalike":    {"anything", "postgres", false},
-		"full path pattern":          {"vaultwarden/server", "vaultwarden/server", true},
-		"path prefix is not a match": {"vaultwarden/server", "vaultwarden", false},
-	}
-	for name, test := range cases {
-		if got := matchesPattern(test.path, test.pattern); got != test.want {
-			t.Errorf("%s: %q against %q = %v, want %v", name, test.path, test.pattern, got, test.want)
-		}
-	}
-}
-
-func TestRepositoryPathStripsHostTagAndDigest(t *testing.T) {
-	cases := map[string]string{
-		"postgres:17-alpine":                    "postgres",
-		"ghcr.io/immich-app/immich-server:v2.7": "immich-app/immich-server",
-		"docker.gitea.com/gitea:1.26.2":         "gitea",
-		"codeberg.org/forgejo/forgejo:16":       "forgejo/forgejo",
-		"localhost:5000/private/app:1":          "private/app",
-		"valkey/valkey:8-bookworm":              "valkey/valkey",
-		"mariadb@sha256:abc":                    "mariadb",
-		"":                                      "",
-	}
-	for image, want := range cases {
-		if got := repositoryPath(image); got != want {
-			t.Errorf("repositoryPath(%q) = %q, want %q", image, got, want)
-		}
-	}
-}
-
 // TestEveryCatalogPatternMatchesARealImage. A pattern that matches nothing is
 // a template that can never fire, and nothing in the code would ever say so.
 func TestEveryCatalogPatternMatchesARealImage(t *testing.T) {
 	// The images the lab scenarios actually run, plus the published names of
 	// the remaining catalogued applications.
-	real := repositoryPaths([]string{
+	real := imageref.RepositoryPaths([]string{
 		"wordpress:6-apache", "mariadb:11", "mysql:8",
 		"nextcloud:31-apache", "postgres:17-alpine", "redis:7-alpine",
 		"valkey/valkey:8-bookworm",
@@ -206,7 +168,7 @@ func TestEveryCatalogPatternMatchesARealImage(t *testing.T) {
 			for _, pattern := range group {
 				matched := false
 				for _, path := range real {
-					if matchesPattern(path, pattern) {
+					if imageref.Matches(path, pattern) {
 						matched = true
 						break
 					}
