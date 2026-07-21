@@ -21,6 +21,14 @@ type ExecRequest struct {
 	// User overrides the user the command runs as. Empty keeps the image's own.
 	User string
 
+	// Env adds environment variables to the command.
+	//
+	// This is how a database password reaches a dump tool. It never goes on
+	// the command line: argv is readable by any process on the host through
+	// `ps`, while a process environment is not. Values here are secret by
+	// assumption — nothing in this package logs them.
+	Env []string
+
 	// Stdout receives the command's standard output as it arrives.
 	//
 	// Streamed rather than returned: a database dump is exactly as large as the
@@ -64,6 +72,9 @@ func (c *sdkClient) ExecInContainer(ctx context.Context, containerID string, req
 	}
 	if req.User != "" {
 		create["User"] = req.User
+	}
+	if len(req.Env) > 0 {
+		create["Env"] = req.Env
 	}
 
 	execID, err := c.createExec(ctx, containerID, create)

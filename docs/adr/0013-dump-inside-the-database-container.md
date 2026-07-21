@@ -26,6 +26,14 @@ A failed dump does not fail the backup. The file copy underneath is still worth 
 
 Volume staging keeps using inert helper containers as ADR-0006 decided. Nothing is executed there, and nothing about that path needed to change.
 
+## What is dumped
+
+PostgreSQL is exported with `pg_dumpall`, which includes roles: ownership and grants live outside any single database, and tables restored into a server with no users to own them are not a restore of the system anyone had.
+
+The MySQL family is exported per user database, with the system schemas excluded by name. `--all-databases` was the obvious choice and produced an unrestorable dump: it includes the `mysql` schema, whose user table carries the source server's credentials. Replaying that into a running server replaces its accounts mid-import, the importing session loses the authorisation it is using, and the import dies — before reaching any user database, because `mysql` sorts ahead of most names. The dump was several megabytes and restored nothing.
+
+The engines therefore differ on purpose. `pg_dumpall` emits roles as statements a target can absorb; MySQL replaces a system catalogue wholesale. Grants are consequently not carried for the MySQL family, and the target server keeps its own accounts.
+
 ## Consequences
 
 - Version mismatch, the most common practical failure of external dump tooling, cannot occur.

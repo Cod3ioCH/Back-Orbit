@@ -13,10 +13,20 @@ import (
 
 // dumpEngines maps a detected technology to the exporter that can handle it.
 //
-// Only PostgreSQL so far. The others stay on the file-copy path and keep their
-// warning, which is the honest arrangement: an engine is listed here once it
-// can actually be exported, never before.
-var dumpEngines = map[string]bool{"postgresql": true}
+// MongoDB, Redis and Valkey are deliberately absent: they stay on the
+// file-copy path and keep their warning. An engine is listed here once it can
+// actually be exported, never before — the list is what the run trusts when it
+// decides whether to warn.
+var dumpEngines = map[string]bool{"postgresql": true, "mysql": true, "mariadb": true}
+
+// credentialKeys names the environment variables each engine keeps its
+// superuser credentials in. Only these keys are ever read from a container's
+// environment.
+var credentialKeys = map[string]struct{ user, password []string }{
+	"postgresql": {user: []string{"POSTGRES_USER"}},
+	"mysql":      {user: []string{"MYSQL_ROOT_USER"}, password: []string{"MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD"}},
+	"mariadb":    {user: []string{"MARIADB_ROOT_USER"}, password: []string{"MARIADB_ROOT_PASSWORD", "MYSQL_ROOT_PASSWORD"}},
+}
 
 // dumpResult pairs a written dump with the service it came from.
 type dumpResult struct {
@@ -99,20 +109,51 @@ func (r *Runner) dumpOne(
 	container docker.Container,
 	stagingDir string,
 ) (dbdump.Result, error) {
-	// Only the user name, never the password: the dump runs inside the
-	// container over its local socket, where the server trusts its own
-	// operating-system user.
-	user, err := r.docker.ContainerEnvValue(ctx, container.ID, "POSTGRES_USER")
+	keys := credentialKeys[finding.Technology]
+
+	user, err := r.firstEnvValue(ctx, container.ID, keys.user)
 	if err != nil {
 		return dbdump.Result{}, fmt.Errorf("read the database user: %w", err)
 	}
+	// PostgreSQL needs no password — the dump runs over the container's local
+	// socket, where the server trusts its own operating-system user. The MySQL
+	// family does not, so its password is read and handed to the tool through
+	// the process environment. It is never logged and never stored.
+	password, err := r.firstEnvValue(ctx, container.ID, keys.password)
+	if err != nil {
+		return dbdump.Result{}, fmt.Errorf("read the database credentials: %w", err)
+	}
 
-	return dbdump.PostgreSQL(ctx, r.docker, dbdump.Target{
+	target := dbdump.Target{
 		Technology:  finding.Technology,
 		Service:     finding.Service,
 		ContainerID: container.ID,
 		User:        user,
-	}, stagingDir)
+		Password:    password,
+	}
+
+	switch finding.Technology {
+	case "postgresql":
+		return dbdump.PostgreSQL(ctx, r.docker, target, stagingDir)
+	case "mysql", "mariadb":
+		return dbdump.MySQL(ctx, r.docker, target, stagingDir)
+	default:
+		return dbdump.Result{}, fmt.Errorf("no exporter for %s", finding.Technology)
+	}
+}
+
+// firstEnvValue returns the first of these keys the container actually sets.
+func (r *Runner) firstEnvValue(ctx context.Context, containerID string, keys []string) (string, error) {
+	for _, key := range keys {
+		value, err := r.docker.ContainerEnvValue(ctx, containerID, key)
+		if err != nil {
+			return "", err
+		}
+		if value != "" {
+			return value, nil
+		}
+	}
+	return "", nil
 }
 
 // dumpedKeys reports which databases were exported, so the consistency check

@@ -42,9 +42,14 @@ type Target struct {
 	Service     string
 	ContainerID string
 	// User is the database superuser, taken from the container's own
-	// configuration. Never a password: the dump runs inside the container over
-	// its local socket, where the server trusts its own operating-system user.
+	// configuration.
 	User string
+
+	// Password is required by the MySQL family, which does not trust the
+	// container's operating-system user the way PostgreSQL does. It is passed
+	// to the tool through the process environment, never on the command line,
+	// and is never logged or returned.
+	Password string
 }
 
 // dumpDirectory is where dumps are placed inside the staged tree.
