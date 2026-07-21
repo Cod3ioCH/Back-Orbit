@@ -334,6 +334,12 @@ export interface BackupRun {
   snapshot?: BackupSnapshot;
 }
 
+export type RestoreMode = "extract" | "in_place" | "clone";
+export interface RestoreIssue { code: string; message: string }
+export interface RestoreItem { kind: string; name: string; sourcePath: string; intendedTarget: string; files: number; bytes: number }
+export interface RestorePreview { snapshotId: string; projectName: string; mode: RestoreMode; supported: boolean; destructive: boolean; estimatedBytes: number; files: number; items: RestoreItem[]; warnings: RestoreIssue[]; blockers: RestoreIssue[] }
+export interface RestoreRun { id: string; snapshotId: string; projectName: string; mode: RestoreMode; status: "running"|"completed"|"failed"|"cancelled"; targetPath?: string; filesRestored: number; bytesRestored: number; warnings: string[]; error?: string; startedAt: string; endedAt?: string; createdAt: string }
+
 export interface RepositoryCheckResult {
   status: RepositoryStatus;
   snapshotCount: number;
@@ -403,6 +409,14 @@ export const api = {
   getBackupRun: (id: string) => request<BackupRun>(`/api/v1/backups/${id}`),
   cancelBackupRun: (id: string) =>
     request<void>(`/api/v1/backups/${id}/cancel`, { method: "POST" }),
+
+  previewRestore: (snapshotId: string, mode: RestoreMode, newProjectName?: string) =>
+    request<RestorePreview>("/api/v1/restores/preview", { method: "POST", body: JSON.stringify({ snapshotId, mode, newProjectName }) }),
+  startRestore: (snapshotId: string, mode: RestoreMode, newProjectName?: string) =>
+    request<RestoreRun>("/api/v1/restores", { method: "POST", body: JSON.stringify({ snapshotId, mode, newProjectName }) }),
+  listRestoreRuns: (limit = 25) => request<RestoreRun[]>(`/api/v1/restores?limit=${limit}`),
+  getRestoreRun: (id: string) => request<RestoreRun>(`/api/v1/restores/${id}`),
+  cancelRestore: (id: string) => request<void>(`/api/v1/restores/${id}/cancel`, { method: "POST" }),
 
   listRepositories: () => request<Repository[]>("/api/v1/repositories"),
   repositoryLocations: () =>

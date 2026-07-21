@@ -9,6 +9,7 @@ import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectDetailPage } from "@/pages/ProjectDetailPage";
 import { ActivityPage } from "@/pages/ActivityPage";
 import { RepositoriesPage } from "@/pages/RepositoriesPage";
+import { RestorePage } from "@/pages/RestorePage";
 
 export default function App() {
   return (
@@ -39,15 +40,7 @@ export default function App() {
               />
             }
           />
-          <Route
-            path="restore"
-            element={
-              <ComingSoon
-                title="Restore"
-                description="The guided restore wizard, including dry runs, arrives in a later phase."
-              />
-            }
-          />
+          <Route path="restore" element={<RestorePage />} />
           <Route path="repositories" element={<RepositoriesPage />} />
           <Route path="activity" element={<ActivityPage />} />
           <Route

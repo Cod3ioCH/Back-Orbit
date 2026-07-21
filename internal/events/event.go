@@ -38,10 +38,14 @@ const (
 	ActionRepositoryInitialized Action = "repository.initialized"
 	ActionRepositoryChecked     Action = "repository.checked"
 
-	ActionBackupStarted   Action = "backup.started"
-	ActionBackupCompleted Action = "backup.completed"
-	ActionBackupFailed    Action = "backup.failed"
-	ActionBackupCancelled Action = "backup.cancelled"
+	ActionBackupStarted    Action = "backup.started"
+	ActionBackupCompleted  Action = "backup.completed"
+	ActionBackupFailed     Action = "backup.failed"
+	ActionBackupCancelled  Action = "backup.cancelled"
+	ActionRestoreStarted   Action = "restore.started"
+	ActionRestoreCompleted Action = "restore.completed"
+	ActionRestoreFailed    Action = "restore.failed"
+	ActionRestoreCancelled Action = "restore.cancelled"
 )
 
 // Event is a single audit/activity record.

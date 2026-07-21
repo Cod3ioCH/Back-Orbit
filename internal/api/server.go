@@ -22,6 +22,7 @@ import (
 	"github.com/Cod3ioCH/Back-Orbit/internal/projectanalyzer"
 	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 	"github.com/Cod3ioCH/Back-Orbit/internal/repositories"
+	restorejobs "github.com/Cod3ioCH/Back-Orbit/internal/restore"
 	"github.com/Cod3ioCH/Back-Orbit/internal/secrets"
 	"github.com/Cod3ioCH/Back-Orbit/internal/storage"
 )
@@ -54,6 +55,7 @@ type Server struct {
 	secrets      *secrets.Store
 	repositories *repositories.Service
 	backups      *backuprun.Runner
+	restores     *restorejobs.Runner
 
 	eventStore  *events.Store
 	eventBroker *events.Broker
@@ -97,6 +99,8 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 	// never end up somewhere that looks like a backup.
 	stager := storage.NewStager(dockerClient, "")
 
+	backupRunner := backuprun.NewRunner(db, projectService, repositoryService, stager, engine, recorder,
+		filepath.Join(cfg.DataDir, "staging"))
 	return &Server{
 		cfg: cfg,
 		auth: &auth.Authenticator{
@@ -112,8 +116,9 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 		analyzer:     analyzerService,
 		secrets:      secretStore,
 		repositories: repositoryService,
-		backups: backuprun.NewRunner(db, projectService, repositoryService, stager, engine, recorder,
-			filepath.Join(cfg.DataDir, "staging")),
+		backups:      backupRunner,
+		restores: restorejobs.NewRunner(db, backupRunner, repositoryService, engine, recorder,
+			filepath.Join(cfg.DataDir, "restores")),
 		eventStore:  eventStore,
 		eventBroker: eventBroker,
 		recorder:    recorder,
@@ -131,7 +136,12 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 // which is the most misleading thing this UI could say about a backup that
 // never finished.
 func (s *Server) CloseInterruptedRuns(ctx context.Context) (int64, error) {
-	return s.backups.CloseInterruptedRuns(ctx)
+	backups, err := s.backups.CloseInterruptedRuns(ctx)
+	if err != nil {
+		return 0, err
+	}
+	restores, err := s.restores.CloseInterruptedRuns(ctx)
+	return backups + restores, err
 }
 
 // Shutdown signals long-lived handlers (the SSE activity stream) to stop.
@@ -183,6 +193,13 @@ func (s *Server) Router() http.Handler {
 				r.Get("/", s.handleListBackupRuns)
 				r.Get("/{id}", s.handleGetBackupRun)
 				r.Post("/{id}/cancel", s.handleCancelBackupRun)
+			})
+			r.Route("/restores", func(r chi.Router) {
+				r.Get("/", s.handleListRestoreRuns)
+				r.Post("/preview", s.handlePreviewRestore)
+				r.Post("/", s.handleStartRestore)
+				r.Get("/{id}", s.handleGetRestoreRun)
+				r.Post("/{id}/cancel", s.handleCancelRestoreRun)
 			})
 
 			r.Route("/secrets", func(r chi.Router) {

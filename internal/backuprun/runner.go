@@ -205,6 +205,11 @@ func (r *Runner) List(ctx context.Context, limit int) ([]Run, error) {
 	return r.store.listRuns(ctx, limit)
 }
 
+// GetSnapshot returns a verified snapshot by its stable Back-Orbit ID.
+func (r *Runner) GetSnapshot(ctx context.Context, id string) (*Snapshot, error) {
+	return r.store.snapshotByID(ctx, id)
+}
+
 // CloseInterruptedRuns fails any run left marked running by a previous
 // process. Called at startup.
 func (r *Runner) CloseInterruptedRuns(ctx context.Context) (int64, error) {
