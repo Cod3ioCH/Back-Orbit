@@ -185,3 +185,54 @@ func TestAnEngineWithoutARestoreCheckSaysSo(t *testing.T) {
 		t.Fatal("an engine with no restore check must report that, not pass silently")
 	}
 }
+
+// TestEveryExportedEngineCanBeChecked keeps the two lists from drifting apart.
+// An exporter without a restore check is an export nobody can prove — which is
+// the state this whole file exists to end.
+func TestEveryExportedEngineCanBeChecked(t *testing.T) {
+	// The engines Back-Orbit exports. SQLite is absent because it is captured
+	// in place rather than exported to a file.
+	for _, engine := range []string{"postgresql", "mysql", "mariadb", "mongodb"} {
+		t.Run(engine, func(t *testing.T) {
+			plan, known := restorePlans[engine]
+			if !known {
+				t.Fatalf("%s can be exported but not checked", engine)
+			}
+			if plan.env == nil || plan.ready == nil || plan.load == nil || plan.countObjects == nil {
+				t.Errorf("%s has an incomplete restore plan", engine)
+			}
+		})
+	}
+}
+
+// TestTheMongoCheckRepeatsTheReplaysExclusions. Checking a different restore
+// than the one Back-Orbit tells people to run would verify the wrong thing —
+// and the admin database is exactly what made a real restore replace the
+// target's accounts.
+func TestTheMongoCheckRepeatsTheReplaysExclusions(t *testing.T) {
+	load := strings.Join(restorePlans["mongodb"].load("", ""), " ")
+
+	for _, needed := range []string{"mongorestore", "--archive", "--drop", "admin.*", "config.*"} {
+		if !strings.Contains(load, needed) {
+			t.Errorf("the check's load is missing %q: %s", needed, load)
+		}
+	}
+}
+
+// TestThrowawayServersNeedNoSecrets: the MySQL family and MongoDB run without
+// credentials here, which is better than generating a password and then having
+// to keep it off argv.
+func TestThrowawayServersNeedNoSecrets(t *testing.T) {
+	for _, engine := range []string{"mysql", "mariadb", "mongodb"} {
+		t.Run(engine, func(t *testing.T) {
+			plan := restorePlans[engine]
+			for _, cmd := range [][]string{plan.ready("", "pw"), plan.load("", "pw"), plan.env("pw")} {
+				for _, part := range cmd {
+					if strings.Contains(part, "pw") {
+						t.Errorf("a secret reached %v", cmd)
+					}
+				}
+			}
+		})
+	}
+}

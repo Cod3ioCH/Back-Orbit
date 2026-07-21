@@ -173,6 +173,88 @@ var restorePlans = map[string]restorePlan{
 		},
 		countObjects: countPostgresTables,
 	},
+
+	// The MySQL family starts with an empty root password. No secret is needed
+	// anywhere in the check, which is better than generating one and having to
+	// keep it off argv.
+	"mysql": {
+		env: func(string) []string { return []string{"MYSQL_ALLOW_EMPTY_PASSWORD=yes"} },
+		ready: func(string, string) []string {
+			return []string{"mysqladmin", "ping", "-uroot"}
+		},
+		load:         func(string, string) []string { return []string{"mysql", "-uroot"} },
+		countObjects: countMySQLTables("mysql"),
+	},
+	"mariadb": {
+		env: func(string) []string { return []string{"MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=yes"} },
+		ready: func(string, string) []string {
+			return []string{"mariadb-admin", "ping", "-uroot"}
+		},
+		load:         func(string, string) []string { return []string{"mariadb", "-uroot"} },
+		countObjects: countMySQLTables("mariadb"),
+	},
+
+	// MongoDB runs unauthenticated here, and the load repeats the exclusions
+	// the replay command carries. Checking a different restore than the one
+	// Back-Orbit tells people to run would verify the wrong thing — and the
+	// admin database is exactly what made a real restore replace the target's
+	// accounts.
+	"mongodb": {
+		env: func(string) []string { return nil },
+		ready: func(string, string) []string {
+			return []string{"mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"}
+		},
+		load: func(string, string) []string {
+			return []string{"mongorestore", "--archive", "--drop",
+				"--nsExclude", "admin.*", "--nsExclude", "config.*"}
+		},
+		countObjects: countMongoCollections,
+	},
+}
+
+// countMySQLTables counts user tables, excluding the system schemas that a
+// dump must never carry.
+func countMySQLTables(engine string) func(context.Context, docker.Client, string, string) (int, error) {
+	client := "mysql"
+	if engine == "mariadb" {
+		client = "mariadb"
+	}
+	return func(ctx context.Context, docker_ docker.Client, containerID, password string) (int, error) {
+		return countSingleNumber(ctx, docker_, containerID, password, []string{
+			client, "-uroot", "-N", "-B", "-e",
+			"select count(*) from information_schema.tables " +
+				"where table_schema not in ('mysql','information_schema','performance_schema','sys')",
+		})
+	}
+}
+
+// countMongoCollections counts collections outside the system databases.
+func countMongoCollections(ctx context.Context, client docker.Client, containerID, password string) (int, error) {
+	return countSingleNumber(ctx, client, containerID, password, []string{
+		"mongosh", "--quiet", "--eval",
+		`db.adminCommand({listDatabases:1}).databases` +
+			`.filter(d=>!["admin","config","local"].includes(d.name))` +
+			`.reduce((n,d)=>n+db.getSiblingDB(d.name).getCollectionNames().length,0)`,
+	})
+}
+
+// countSingleNumber runs a command whose whole output is one number.
+func countSingleNumber(ctx context.Context, client docker.Client, containerID, password string, cmd []string) (int, error) {
+	var out strings.Builder
+	result, err := client.ExecInContainer(ctx, containerID, docker.ExecRequest{Cmd: cmd, Stdout: &out})
+	if err != nil {
+		return 0, fmt.Errorf("count restored objects: %w", err)
+	}
+	if result.ExitCode != 0 {
+		return 0, fmt.Errorf("counting restored objects failed: %s",
+			redactSecret(strings.TrimSpace(result.Stderr), password))
+	}
+	text := strings.TrimSpace(out.String())
+	count, err := strconv.Atoi(text)
+	if err != nil {
+		return 0, fmt.Errorf("could not read the object count from %q", text)
+	}
+	return count, nil
 }
 
 func waitReady(ctx context.Context, client docker.Client, containerID string, plan restorePlan, password string) error {
