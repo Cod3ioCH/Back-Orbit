@@ -37,7 +37,14 @@ type FakeClient struct {
 	RanContainers []string
 	RunResult     ContainerRunResult
 	RunErr        error
-	liveContainers    map[string]bool
+	// ExecCalls records every command run inside a container, so a test can
+	// assert what a dump actually asked the database to do.
+	ExecCalls      []ExecRequest
+	ExecStdout     []byte
+	ExecResult     ExecResult
+	ExecErr        error
+	EnvValues      map[string]string
+	liveContainers map[string]bool
 }
 
 // NewFakeClient creates a FakeClient reporting a connected status by
@@ -83,6 +90,30 @@ func (f *FakeClient) CreateHelperContainer(ctx context.Context, req HelperContai
 	}
 	f.liveContainers[id] = true
 	return id, nil
+}
+
+// ExecInContainer records the command and replays a scripted result.
+func (f *FakeClient) ExecInContainer(ctx context.Context, containerID string, req ExecRequest) (ExecResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.ExecCalls = append(f.ExecCalls, req)
+	if f.ExecErr != nil {
+		return ExecResult{}, f.ExecErr
+	}
+	if req.Stdout != nil && len(f.ExecStdout) > 0 {
+		if _, err := req.Stdout.Write(f.ExecStdout); err != nil {
+			return ExecResult{}, err
+		}
+	}
+	return f.ExecResult, nil
+}
+
+// ContainerEnvValue replays scripted environment values.
+func (f *FakeClient) ContainerEnvValue(ctx context.Context, containerID, key string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.EnvValues[key], nil
 }
 
 // RunResult is what RunHelperContainer returns; RunErr overrides it.

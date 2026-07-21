@@ -126,6 +126,23 @@ type Manifest struct {
 
 	// Volumes carries one entry per named volume in the snapshot.
 	Volumes []VolumeManifest `json:"volumes"`
+
+	// Databases lists the logical exports in this snapshot. A restore reads
+	// these instead of the raw files underneath, which is the whole reason the
+	// dump was taken.
+	Databases []DatabaseDump `json:"databases,omitempty"`
+}
+
+// DatabaseDump is one logical export inside a snapshot.
+type DatabaseDump struct {
+	Technology string `json:"technology"`
+	Service    string `json:"service"`
+	// Path is where the dump sits inside the snapshot.
+	Path string `json:"path"`
+	// Command is what produced it, so a restore does not have to guess how to
+	// read the file back.
+	Command string `json:"command"`
+	Bytes   int64  `json:"bytes"`
 }
 
 // VolumeManifest is one volume's contribution to a snapshot.

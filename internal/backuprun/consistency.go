@@ -49,7 +49,7 @@ var serverDatabases = map[string]string{
 // A warning rather than a refusal, because refusing would leave the operator
 // with no backup at all — and for a stopped service the file copy is perfectly
 // good. What must not happen is that the limitation goes unmentioned.
-func databaseConsistencyWarnings(ctx context.Context, source BlueprintSource, projectID string) []string {
+func databaseConsistencyWarnings(ctx context.Context, source BlueprintSource, projectID string, dumped map[string]bool) []string {
 	if source == nil || projectID == "" {
 		return nil
 	}
@@ -72,6 +72,11 @@ func databaseConsistencyWarnings(ctx context.Context, source BlueprintSource, pr
 		}
 		label, relevant := serverDatabases[finding.Technology]
 		if !relevant {
+			continue
+		}
+		// A database that was exported needs no warning: the snapshot holds a
+		// consistent dump of it, not only the files underneath.
+		if dumped[finding.Service+":"+finding.Technology] {
 			continue
 		}
 		if finding.Service != "" {

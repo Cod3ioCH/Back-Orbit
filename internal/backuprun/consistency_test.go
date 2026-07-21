@@ -33,8 +33,7 @@ func database(technology, service string) projectanalyzer.Finding {
 func TestServerDatabasesAreReportedAsFileCopies(t *testing.T) {
 	for _, technology := range []string{"postgresql", "mysql", "mariadb", "mongodb", "redis", "valkey"} {
 		t.Run(technology, func(t *testing.T) {
-			warnings := databaseConsistencyWarnings(
-				context.Background(), withFindings(database(technology, "db")), "project-1")
+			warnings := databaseConsistencyWarnings(context.Background(), withFindings(database(technology, "db")), "project-1", nil)
 
 			if len(warnings) != 1 {
 				t.Fatalf("got %d warnings, want exactly one: %v", len(warnings), warnings)
@@ -53,8 +52,7 @@ func TestServerDatabasesAreReportedAsFileCopies(t *testing.T) {
 // own online backup, so a snapshot holds a consistent copy. Warning about it
 // would teach people to ignore the warning that matters.
 func TestSQLiteIsNotWarnedAbout(t *testing.T) {
-	warnings := databaseConsistencyWarnings(
-		context.Background(), withFindings(database("sqlite", "app")), "project-1")
+	warnings := databaseConsistencyWarnings(context.Background(), withFindings(database("sqlite", "app")), "project-1", nil)
 
 	if len(warnings) != 0 {
 		t.Fatalf("SQLite is captured consistently and must not be warned about: %v", warnings)
@@ -68,7 +66,7 @@ func TestOneWarningPerTechnology(t *testing.T) {
 		database("postgresql", "primary"),
 		database("postgresql", "replica"),
 		database("postgresql", "primary"),
-	), "project-1")
+	), "project-1", nil)
 
 	if len(warnings) != 1 {
 		t.Fatalf("got %d warnings, want one: %v", len(warnings), warnings)
@@ -86,7 +84,7 @@ func TestNonDatabaseFindingsAreIgnored(t *testing.T) {
 	warnings := databaseConsistencyWarnings(context.Background(), withFindings(
 		projectanalyzer.Finding{Kind: "storage", Technology: "volume"},
 		projectanalyzer.Finding{Kind: "secret", Technology: "compose-secret"},
-	), "project-1")
+	), "project-1", nil)
 
 	if len(warnings) != 0 {
 		t.Fatalf("got %v, want nothing", warnings)
@@ -104,7 +102,7 @@ func TestMissingAnalysisDoesNotBreakABackup(t *testing.T) {
 
 	for name, source := range cases {
 		t.Run(name, func(t *testing.T) {
-			if warnings := databaseConsistencyWarnings(context.Background(), source, "project-1"); len(warnings) != 0 {
+			if warnings := databaseConsistencyWarnings(context.Background(), source, "project-1", nil); len(warnings) != 0 {
 				t.Fatalf("got %v, want nothing", warnings)
 			}
 		})

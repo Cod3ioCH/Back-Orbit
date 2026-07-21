@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Cod3ioCH/Back-Orbit/internal/backup"
+	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
 	"github.com/Cod3ioCH/Back-Orbit/internal/events"
 	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
 	"github.com/Cod3ioCH/Back-Orbit/internal/repositories"
@@ -39,6 +40,8 @@ type Runner struct {
 	// blueprints is optional. Without it a backup still runs; it simply cannot
 	// say which detected databases it captured as plain files.
 	blueprints BlueprintSource
+	// docker is needed to run a dump inside a database's own container.
+	docker docker.Client
 
 	// mu guards active. A run is cancellable only while this process is the
 	// one running it, which is why cancellation lives in memory and
@@ -62,6 +65,7 @@ func NewRunner(
 	recorder *events.Recorder,
 	stagingDir string,
 	blueprints BlueprintSource,
+	dockerClient docker.Client,
 ) *Runner {
 	return &Runner{
 		store:      newStore(db),
@@ -72,6 +76,7 @@ func NewRunner(
 		recorder:   recorder,
 		stagingDir: stagingDir,
 		blueprints: blueprints,
+		docker:     dockerClient,
 		active:     map[string]context.CancelFunc{},
 		byProject:  map[string]string{},
 	}
@@ -182,7 +187,7 @@ func (r *Runner) Start(ctx context.Context, req StartRequest) (Run, error) {
 	go func() {
 		defer cancel()
 		defer r.release(project.ID, run.ID)
-		r.execute(runCtx, run, engineConfig, req.ActorUserID)
+		r.execute(runCtx, run, engineConfig, project, req.ActorUserID)
 	}()
 
 	return run, nil
@@ -233,7 +238,7 @@ func (r *Runner) release(projectID, runID string) {
 // execute performs the run. It never returns an error: every outcome is
 // recorded on the run itself, because by this point there is no caller left to
 // return one to.
-func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryConfig, actorUserID string) {
+func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryConfig, project projects.Detail, actorUserID string) {
 	// The staging path is derived from the project, never from the run, and
 	// this matters more than it looks. restic records the absolute path it
 	// backed up, so a per-run directory would file every backup of the same
@@ -326,11 +331,26 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 		r.persist(ctx, &run)
 	}
 
-	// What the analyzer found, held against what staging actually did. A
+	// Export what can be exported, into the staged tree so the dump travels in
+	// the same snapshot as the files it was taken from.
+	dumps := r.dumpDatabases(ctx, &run, project, workDir)
+	if len(dumps) > 0 {
+		stagedPaths = append(stagedPaths, filepath.Join(workDir, "back-orbit-dumps"))
+		for _, dump := range dumps {
+			manifest.Databases = append(manifest.Databases, DatabaseDump{
+				Technology: dump.Technology, Service: dump.Service,
+				Path: dump.Path, Command: dump.Command, Bytes: dump.Bytes,
+			})
+			run.BytesTotal += dump.Bytes
+		}
+	}
+	r.persist(ctx, &run)
+
+	// What the analyzer found, held against what this run actually did. A
 	// database captured as files rather than dumped is the difference between
 	// a snapshot that restores and one that only looks like it will.
 	run.Warnings = append(run.Warnings,
-		databaseConsistencyWarnings(ctx, r.blueprints, run.ProjectID)...)
+		databaseConsistencyWarnings(ctx, r.blueprints, run.ProjectID, dumpedKeys(dumps))...)
 
 	// --- Snapshot --------------------------------------------------------
 	run.Phase = PhaseSnapshotting

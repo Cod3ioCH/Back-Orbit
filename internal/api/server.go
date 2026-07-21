@@ -102,7 +102,7 @@ func NewServer(cfg config.Config, db *sql.DB, dockerClient docker.Client, secret
 	// The runner reads the analyzer's blueprint so a backup can say which
 	// detected databases it captured as plain files rather than as a dump.
 	backupRunner := backuprun.NewRunner(db, projectService, repositoryService, stager, engine, recorder,
-		filepath.Join(cfg.DataDir, "staging"), analyzerService)
+		filepath.Join(cfg.DataDir, "staging"), analyzerService, dockerClient)
 	return &Server{
 		cfg: cfg,
 		auth: &auth.Authenticator{

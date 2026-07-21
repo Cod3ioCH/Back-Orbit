@@ -132,6 +132,16 @@ type Client interface {
 	// uncompressed tar. The caller must close the returned reader.
 	ContainerArchive(ctx context.Context, containerID, path string) (io.ReadCloser, error)
 
+	// ExecInContainer runs a command inside a running container and streams its
+	// output. Used for database dumps, where only the container's own tooling
+	// is guaranteed to match the server it is dumping.
+	ExecInContainer(ctx context.Context, containerID string, req ExecRequest) (ExecResult, error)
+
+	// ContainerEnvValue reads a single environment variable from a container.
+	// One key at a time on purpose: a container's environment holds database
+	// passwords, and returning all of it invites a caller to keep the lot.
+	ContainerEnvValue(ctx context.Context, containerID, key string) (string, error)
+
 	// RunHelperContainer starts a helper created with a Command and waits for
 	// it to finish, returning its exit code and output.
 	//
