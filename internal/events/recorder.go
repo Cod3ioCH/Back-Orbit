@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 )
 
@@ -34,4 +35,23 @@ func (r *Recorder) Emit(ctx context.Context, event Event) {
 		stored = event
 	}
 	r.broker.Publish(stored)
+}
+
+// Record is Emit for events that must not be lost.
+//
+// Emit treats a failed write as a logging problem, which is right for routine
+// activity: losing one "repository checked" entry is not worth failing the
+// operation over. Destructive actions are different — an unrecorded deletion
+// leaves no answer to who destroyed what, and the whole point of the audit log
+// is to have that answer afterwards. Callers doing something irreversible use
+// this instead and report the failure rather than absorbing it.
+func (r *Recorder) Record(ctx context.Context, event Event) error {
+	stored, err := r.store.Insert(ctx, event)
+	if err != nil {
+		slog.Error("events: failed to persist audit event", "action", event.Action, "error", err)
+		r.broker.Publish(event)
+		return fmt.Errorf("events: persist %s audit event: %w", event.Action, err)
+	}
+	r.broker.Publish(stored)
+	return nil
 }

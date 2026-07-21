@@ -139,4 +139,17 @@
   html {
     @apply font-sans;
   }
+  /* Tailwind v4 dropped the Preflight rule that gave buttons a pointer
+     cursor, so every button in the app fell back to the arrow and stopped
+     looking clickable. Restored here rather than on the Button component:
+     this also covers plain <button> elements and anything rendered with
+     role="button", which a component-level class would miss.
+
+     Disabled controls keep the default arrow — a pointer would invite a
+     click that does nothing. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  label:has(> input[type="checkbox"]:not(:disabled)) {
+    cursor: pointer;
+  }
 }

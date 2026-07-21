@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/Cod3ioCH/Back-Orbit/internal/backup"
 	"github.com/Cod3ioCH/Back-Orbit/internal/dbtest"
@@ -257,7 +260,7 @@ func TestDeleteRemovesThePasswordToo(t *testing.T) {
 		t.Fatalf("the password should exist before delete: %v", err)
 	}
 
-	if err := svc.Delete(ctx, "actor", repo.ID); err != nil {
+	if err := svc.Delete(ctx, "actor", repo.ID, DeleteOptions{}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
@@ -289,20 +292,112 @@ func TestDeleteLeavesTheDataAlone(t *testing.T) {
 		t.Fatalf("Initialize: %v", err)
 	}
 
-	if err := svc.Delete(ctx, "actor", repo.ID); err != nil {
+	if err := svc.Delete(ctx, "actor", repo.ID, DeleteOptions{}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	// The restic repository on disk must still be there.
-	if _, err := filepath.Glob(filepath.Join(location, "config")); err != nil {
-		t.Fatalf("glob: %v", err)
+	// The restic repository on disk must still be intact — not merely
+	// non-empty, but still carrying the files that make it restorable.
+	for _, name := range []string{"config", "keys", "snapshots"} {
+		if _, err := os.Stat(filepath.Join(location, name)); err != nil {
+			t.Errorf("deleting the configuration destroyed %s: %v", name, err)
+		}
 	}
-	entries, err := filepath.Glob(filepath.Join(location, "*"))
+}
+
+// TestDeleteDataErasesTheRepository is the destructive path, and the one the
+// operator has to opt into. It must actually do what the warning says.
+func TestDeleteDataErasesTheRepository(t *testing.T) {
+	svc, _, db := newService(t)
+	ctx := context.Background()
+
+	// A real user row: audit events reference one, and the whole point of this
+	// test is that the event is actually written.
+	actor := insertTestUser(t, db)
+
+	location := filepath.Join(t.TempDir(), "repo")
+	repo, err := svc.Create(ctx, actor, CreateRequest{
+		Name:     "primary",
+		Kind:     backup.RepositoryLocal,
+		Location: location,
+		Password: "repository-password",
+	})
 	if err != nil {
-		t.Fatalf("glob: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
-	if len(entries) == 0 {
-		t.Fatal("deleting the configuration destroyed the repository data")
+	if err := svc.Initialize(ctx, actor, repo.ID); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(location, "config")); err != nil {
+		t.Fatalf("the repository should exist before the test: %v", err)
+	}
+
+	if err := svc.Delete(ctx, actor, repo.ID, DeleteOptions{DeleteData: true}); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	if _, err := os.Stat(location); !os.IsNotExist(err) {
+		t.Errorf("the repository data survived an explicit delete: %v", err)
+	}
+	if _, err := svc.Get(ctx, repo.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the configuration should be gone too, got %v", err)
+	}
+
+	// Destroying backups has to be auditable, and distinguishable from
+	// removing a configuration — otherwise the log cannot answer the only
+	// question that matters afterwards: who deleted the data, and from where.
+	var metadata string
+	err = db.QueryRowContext(ctx,
+		`SELECT metadata_json FROM audit_events WHERE action = 'repository.deleted' ORDER BY created_at DESC LIMIT 1`,
+	).Scan(&metadata)
+	if err != nil {
+		t.Fatalf("read audit event: %v", err)
+	}
+	if !strings.Contains(metadata, `"dataDeleted":true`) {
+		t.Errorf("audit event does not record that data was destroyed: %s", metadata)
+	}
+	if !strings.Contains(metadata, location) {
+		t.Errorf("audit event does not record what was destroyed: %s", metadata)
+	}
+}
+
+// TestDeleteDataRefusesForeignData keeps the guard wired up through the
+// service, not just in the helper: a location holding something else must
+// survive, and so must the configuration pointing at it.
+func TestDeleteDataRefusesForeignData(t *testing.T) {
+	svc, _, _ := newService(t)
+	ctx := context.Background()
+
+	location := filepath.Join(t.TempDir(), "not-a-repo")
+	if err := os.MkdirAll(location, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(location, "family-photos.tar"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	repo, err := svc.Create(ctx, "actor", CreateRequest{
+		Name:     "mistyped",
+		Kind:     backup.RepositoryLocal,
+		Location: location,
+		Password: "repository-password",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	err = svc.Delete(ctx, "actor", repo.ID, DeleteOptions{DeleteData: true})
+	if !errors.Is(err, ErrNotARepository) {
+		t.Fatalf("err = %v, want ErrNotARepository", err)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(location, "family-photos.tar")); statErr != nil {
+		t.Errorf("foreign data was destroyed: %v", statErr)
+	}
+	// The configuration must survive a refused delete, so the operator can see
+	// what happened and act on it rather than losing the row as well.
+	if _, getErr := svc.Get(ctx, repo.ID); getErr != nil {
+		t.Errorf("the repository was removed even though the delete failed: %v", getErr)
 	}
 }
 
@@ -372,4 +467,20 @@ func TestFailedCreateLeavesNoOrphanedSecret(t *testing.T) {
 	if len(after) != len(before) {
 		t.Fatalf("a failed create left %d orphaned secret(s) behind", len(after)-len(before))
 	}
+}
+
+// insertTestUser creates a real user row, so audit events written on its
+// behalf satisfy the foreign key and are actually persisted.
+func insertTestUser(t *testing.T, db *sql.DB) string {
+	t.Helper()
+	id := uuid.NewString()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := db.Exec(
+		`INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		id, "auditor-"+id[:8], "x", now, now,
+	)
+	if err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	return id
 }

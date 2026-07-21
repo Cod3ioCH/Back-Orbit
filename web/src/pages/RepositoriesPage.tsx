@@ -307,6 +307,124 @@ function RepositoryList() {
   );
 }
 
+/**
+ * Confirms removing a repository, and lets the operator opt into erasing the
+ * snapshots with it.
+ *
+ * Two separate decisions are deliberately kept separate. Removing a
+ * configuration is routine and reversible — the repository can be added back.
+ * Erasing the snapshots is neither, and it is the one action that can leave
+ * someone with no copy of their data at all. Making it the default, or hiding
+ * it behind the same click, would put the worst outcome one stray press away.
+ *
+ * Typing the name is the deliberate friction: it cannot be satisfied by
+ * muscle memory the way a second "are you sure" can.
+ */
+function RemoveRepositoryDialog({
+  repository,
+  open,
+  onOpenChange,
+  onConfirm,
+  pending,
+}: {
+  repository: Repository;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (deleteData: boolean) => void;
+  pending: boolean;
+}) {
+  const [typedName, setTypedName] = useState("");
+  const [deleteData, setDeleteData] = useState(false);
+
+  // Reopening always starts from the safe state: a checkbox left ticked from
+  // a previous, abandoned attempt would be the exact accident this guards.
+  useEffect(() => {
+    if (open) {
+      setTypedName("");
+      setDeleteData(false);
+    }
+  }, [open]);
+
+  const nameMatches = typedName === repository.name;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remove “{repository.name}”?</DialogTitle>
+          <DialogDescription>
+            Back-Orbit will forget this repository and delete its stored password.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {deleteData ? (
+            <div
+              role="alert"
+              className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+            >
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <div className="space-y-1">
+                <p className="font-medium">Every snapshot in this repository will be destroyed.</p>
+                <p>
+                  All backups under{" "}
+                  <span className="font-mono break-all">{repository.location}</span> are deleted
+                  permanently. This cannot be undone, and nothing can restore them unless you
+                  hold a copy elsewhere.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              The snapshots at{" "}
+              <span className="font-mono break-all text-foreground">{repository.location}</span>{" "}
+              stay where they are. You can add this repository again later, or delete the
+              directory yourself.
+            </p>
+          )}
+
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={deleteData}
+              onChange={(event) => setDeleteData(event.target.checked)}
+              className="mt-0.5 size-4 shrink-0 accent-destructive"
+            />
+            <span>Also delete every snapshot stored at this location</span>
+          </label>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirm-repo-name">
+              Type <span className="font-mono font-semibold">{repository.name}</span> to confirm
+            </Label>
+            <Input
+              id="confirm-repo-name"
+              value={typedName}
+              autoComplete="off"
+              onChange={(event) => setTypedName(event.target.value)}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+            Cancel
+          </Button>
+          <Button
+            variant={deleteData ? "destructive" : "default"}
+            onClick={() => onConfirm(deleteData)}
+            disabled={!nameMatches || pending}
+            aria-busy={pending}
+          >
+            {pending && <Loader2 className="size-4 animate-spin" />}
+            {deleteData ? "Delete repository and all backups" : "Remove repository"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RepositoryCard({ repository }: { repository: Repository }) {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["repositories"] });
@@ -339,12 +457,22 @@ function RepositoryCard({ repository }: { repository: Repository }) {
       toast.error(error instanceof ApiError ? error.message : "Could not initialise."),
   });
 
+  const [removeOpen, setRemoveOpen] = useState(false);
+
   const deleteMutation = useMutation({
-    mutationFn: () => api.deleteRepository(repository.id),
-    onSuccess: () => {
+    mutationFn: (deleteData: boolean) => api.deleteRepository(repository.id, deleteData),
+    onSuccess: (_result, deleteData) => {
       invalidate();
-      toast.success(`${repository.name} removed. The data at the destination was left untouched.`);
+      setRemoveOpen(false);
+      toast.success(
+        deleteData
+          ? `${repository.name} and every snapshot at ${repository.location} were deleted.`
+          : `${repository.name} removed. The snapshots at ${repository.location} were left untouched.`,
+      );
     },
+    // The dialog stays open on failure. A refused deletion has a reason worth
+    // reading — most often that the location holds something that is not a
+    // restic repository — and closing would throw it away.
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : "Could not remove."),
   });
@@ -410,7 +538,7 @@ function RepositoryCard({ repository }: { repository: Repository }) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => deleteMutation.mutate()}
+            onClick={() => setRemoveOpen(true)}
             disabled={busy}
             aria-busy={deleteMutation.isPending}
             aria-label={`Remove ${repository.name}`}
@@ -421,6 +549,14 @@ function RepositoryCard({ repository }: { repository: Repository }) {
               <Trash2 className="size-4" />
             )}
           </Button>
+
+          <RemoveRepositoryDialog
+            repository={repository}
+            open={removeOpen}
+            onOpenChange={setRemoveOpen}
+            onConfirm={(deleteData) => deleteMutation.mutate(deleteData)}
+            pending={deleteMutation.isPending}
+          />
         </div>
       </CardContent>
     </Card>

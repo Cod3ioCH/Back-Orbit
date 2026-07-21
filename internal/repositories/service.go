@@ -124,16 +124,49 @@ func (s *Service) Create(ctx context.Context, actorUserID string, req CreateRequ
 	return repo, nil
 }
 
-// Delete removes a repository and its stored password.
+// DeleteOptions controls how much of a repository is removed.
+type DeleteOptions struct {
+	// DeleteData also erases the snapshots at the destination.
+	//
+	// Off by default, and it must stay that way: a configuration removed by
+	// mistake can be added back, while erased backups cannot. The caller has
+	// to ask for this explicitly, having been told what it destroys.
+	DeleteData bool
+}
+
+// Delete removes a repository and its stored password, and — only when asked —
+// the snapshots at the destination.
 //
-// It deliberately does not touch the data at the destination. Deleting a
-// configuration in Back-Orbit must never destroy someone's backups — removing
-// the actual snapshots is a separate, explicit act performed with the tools
-// that own that storage.
-func (s *Service) Delete(ctx context.Context, actorUserID, id string) error {
+// Without DeleteData the data is deliberately left where it is: removing a
+// configuration must not destroy someone's backups. With it, the data goes
+// first and the configuration only afterwards, so a failure part way through
+// leaves a repository that is still configured, still visible, and can simply
+// be deleted again. Removing the row first would strand data with nothing left
+// in the UI pointing at it.
+func (s *Service) Delete(ctx context.Context, actorUserID, id string, opts DeleteOptions) error {
 	repo, err := s.store.get(ctx, id)
 	if err != nil {
 		return err
+	}
+
+	dataDeleted := false
+	if opts.DeleteData {
+		if repo.Kind != backup.RepositoryLocal {
+			return fmt.Errorf("%w: deleting the data of a %s repository is not supported yet",
+				ErrInvalidKind, repo.Kind)
+		}
+		if s.locations != nil {
+			// Defence in depth. Creation already refuses a location inside the
+			// data directory, but a row could predate that check or have been
+			// edited another way, and this is the one operation where being
+			// wrong is unrecoverable.
+			if err := s.locations.refuseInsideDataDir(repo.Location); err != nil {
+				return err
+			}
+		}
+		if dataDeleted, err = purgeLocalRepository(repo.Location); err != nil {
+			return err
+		}
 	}
 
 	if err := s.store.delete(ctx, id); err != nil {
@@ -145,13 +178,35 @@ func (s *Service) Delete(ctx context.Context, actorUserID, id string) error {
 		return fmt.Errorf("repositories: repository removed but its password could not be deleted: %w", err)
 	}
 
-	s.recorder.Emit(ctx, events.Event{
+	// The audit trail has to distinguish the two outcomes: one removed a
+	// configuration, the other destroyed backups. Recording them identically
+	// would make the destructive case unauditable, and the location is part of
+	// what was destroyed.
+	metadata := map[string]any{"name": repo.Name, "dataDeleted": dataDeleted}
+	if dataDeleted {
+		metadata["location"] = repo.Location
+	}
+	event := events.Event{
 		Action:      events.ActionRepositoryDeleted,
 		ActorUserID: actorUserID,
 		TargetType:  "repository",
 		TargetID:    id,
-		Metadata:    map[string]any{"name": repo.Name},
-	})
+		Metadata:    metadata,
+	}
+
+	if !dataDeleted {
+		s.recorder.Emit(ctx, event)
+		return nil
+	}
+
+	// Backups were destroyed. The data is already gone, so failing here cannot
+	// undo anything — but the operator has to learn that the record of it is
+	// missing, rather than find out later that the log has a hole exactly
+	// where the irreversible action was.
+	if err := s.recorder.Record(ctx, event); err != nil {
+		return fmt.Errorf("repositories: the repository and its data at %s were deleted, "+
+			"but the audit event could not be recorded: %w", repo.Location, err)
+	}
 	return nil
 }
 

@@ -71,9 +71,18 @@ func (s *Server) handleCreateRepository(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusCreated, repo)
 }
 
+// handleDeleteRepository removes a repository, and its snapshots only when
+// deleteData=true is passed explicitly. Anything else — a missing, empty or
+// unparseable value — keeps the data, so the destructive path can never be
+// entered by accident or by a malformed request.
 func (s *Server) handleDeleteRepository(w http.ResponseWriter, r *http.Request) {
 	user, _ := auth.UserFromContext(r.Context())
-	if err := s.repositories.Delete(r.Context(), user.ID, chi.URLParam(r, "id")); err != nil {
+
+	opts := repositories.DeleteOptions{
+		DeleteData: r.URL.Query().Get("deleteData") == "true",
+	}
+
+	if err := s.repositories.Delete(r.Context(), user.ID, chi.URLParam(r, "id"), opts); err != nil {
 		writeRepositoryError(w, err)
 		return
 	}
@@ -133,6 +142,8 @@ func writeRepositoryError(w http.ResponseWriter, err error) {
 		// wrapped around it explains what to change.
 		writeError(w, http.StatusBadRequest, unwrapMessage(err,
 			repositories.ErrInvalidKind, repositories.ErrInvalidConfig))
+	case errors.Is(err, repositories.ErrNotARepository):
+		writeError(w, http.StatusConflict, unwrapMessage(err, repositories.ErrNotARepository))
 	case errors.Is(err, secrets.ErrLocked):
 		writeError(w, http.StatusConflict,
 			"the secret store is locked, so repository passwords cannot be read; unlock it and try again")

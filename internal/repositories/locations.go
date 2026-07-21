@@ -75,26 +75,10 @@ func (l *Locations) Suggest() []Location {
 // otherwise only discovered later — one at the next backup, the other on the
 // day the backup is needed.
 func (l *Locations) validateLocalPath(path string) error {
+	if err := l.refuseInsideDataDir(path); err != nil {
+		return err
+	}
 	path = cleanAbs(path)
-
-	// A repository inside Back-Orbit's own data directory shares the fate of
-	// the database: one lost volume takes the application state and every
-	// backup with it. That is the single failure a backup tool exists to
-	// prevent, so it is refused rather than warned about — and the operator is
-	// told where to put it instead.
-	if l.dataDir != "" && withinOrEqual(path, l.dataDir) {
-		return fmt.Errorf("%w: %s is inside Back-Orbit's own data directory (%s). "+
-			"Backups stored there would be lost by the same failure that loses Back-Orbit's "+
-			"database, so they would not protect anything. %s",
-			ErrInvalidConfig, path, l.dataDir, l.alternativeHint())
-	}
-	// The same applies in reverse: a repository at a path that *contains* the
-	// data directory swallows the database into the backup destination.
-	if l.dataDir != "" && withinOrEqual(l.dataDir, path) {
-		return fmt.Errorf("%w: %s contains Back-Orbit's own data directory (%s), "+
-			"which would mix the application's database into the backup destination. %s",
-			ErrInvalidConfig, path, l.dataDir, l.alternativeHint())
-	}
 
 	// Writability is probed, not inferred from permission bits: bits ignore
 	// read-only mounts, supplementary groups and ACLs, and getting this wrong
@@ -104,6 +88,38 @@ func (l *Locations) validateLocalPath(path string) error {
 			ErrInvalidConfig, describeUnwritable(probed, err), l.alternativeHint())
 	}
 
+	return nil
+}
+
+// refuseInsideDataDir rejects a location that overlaps Back-Orbit's own data
+// directory, in either direction.
+//
+// A repository inside the data directory shares the fate of the database: one
+// lost volume takes the application state and every backup with it, which is
+// the single failure a backup tool exists to prevent. A repository that
+// *contains* the data directory has the mirror problem — it pulls the database
+// into the backup destination. Both are refused rather than warned about, and
+// the operator is told where to go instead.
+//
+// Checked when a repository is created, and again before its data is deleted:
+// there the consequence of being wrong cannot be undone.
+func (l *Locations) refuseInsideDataDir(path string) error {
+	if l.dataDir == "" {
+		return nil
+	}
+	path = cleanAbs(path)
+
+	if withinOrEqual(path, l.dataDir) {
+		return fmt.Errorf("%w: %s is inside Back-Orbit's own data directory (%s). "+
+			"Backups stored there would be lost by the same failure that loses Back-Orbit's "+
+			"database, so they would not protect anything. %s",
+			ErrInvalidConfig, path, l.dataDir, l.alternativeHint())
+	}
+	if withinOrEqual(l.dataDir, path) {
+		return fmt.Errorf("%w: %s contains Back-Orbit's own data directory (%s), "+
+			"which would mix the application's database into the backup destination. %s",
+			ErrInvalidConfig, path, l.dataDir, l.alternativeHint())
+	}
 	return nil
 }
 

@@ -260,8 +260,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
-  deleteRepository: (id: string) =>
-    request<void>(`/api/v1/repositories/${id}`, { method: "DELETE" }),
+  // deleteData erases the snapshots as well. It is only ever sent when the
+  // operator asked for it in the confirmation dialog; the server treats any
+  // other value as "keep the data".
+  deleteRepository: (id: string, deleteData = false) =>
+    request<void>(
+      `/api/v1/repositories/${id}${deleteData ? "?deleteData=true" : ""}`,
+      { method: "DELETE" },
+    ),
   checkRepository: (id: string) =>
     request<RepositoryCheckResult>(`/api/v1/repositories/${id}/check`, { method: "POST" }),
   initializeRepository: (id: string) =>
