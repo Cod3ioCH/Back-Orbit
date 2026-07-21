@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, type BackupRun, type BackupSnapshot } from "@/lib/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { formatBytes } from "@/lib/format";
@@ -44,7 +45,7 @@ export function SnapshotsPage() {
     </div>
     <Card><CardContent className="flex flex-col gap-3 py-4 sm:flex-row">
       <label className="relative flex-1"><span className="sr-only">Search snapshots</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/><Input value={search} onChange={(event)=>setSearch(event.target.value)} className="pl-9" placeholder="Search project, repository, or snapshot ID…"/></label>
-      <label><span className="sr-only">Filter by project</span><select value={project} onChange={(event)=>setProject(event.target.value)} className="h-8 w-full rounded-lg border bg-background px-3 text-sm sm:w-56"><option value="all">All projects</option>{projects.map(name=><option key={name} value={name}>{name}</option>)}</select></label>
+      <Select<string> value={project} onValueChange={(value)=>setProject(value??"all")}><SelectTrigger size="sm" className="w-full sm:w-56" aria-label="Filter by project"><SelectValue>{(value)=>value==="all"?"All projects":value}</SelectValue></SelectTrigger><SelectContent><SelectItem value="all">All projects</SelectItem>{projects.map(name=><SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent></Select>
     </CardContent></Card>
     {query.isLoading?<LoadingList/>:query.isError?<Card><EmptyState icon={Camera} title="Snapshots could not be loaded" description="Check the Back-Orbit API and try again."/></Card>:filtered.length===0?<Card><EmptyState icon={Camera} title={records.length?"No snapshots match":"No recovery points yet"} description={records.length?"Adjust the search or project filter.":"Run a project backup. Verified snapshots will appear here automatically."}/></Card>:<div className="space-y-3">{filtered.map(record=><SnapshotCard key={record.snapshot.id} record={record} onDetails={()=>setSelected(record)}/>)}</div>}
     <SnapshotDetails record={selected} onOpenChange={(open)=>{if(!open)setSelected(undefined)}}/>
