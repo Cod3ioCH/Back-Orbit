@@ -17,6 +17,10 @@ import { Badge } from "@/components/ui/badge";
 import { DestinationPicker } from "@/components/DestinationPicker";
 import { Timestamp } from "@/components/Timestamp";
 import {
+  DatabaseProtection,
+  DatabaseProtectionSummary,
+} from "@/components/DatabaseProtection";
+import {
   api,
   ApiError,
   type BackupPhase,
@@ -275,6 +279,8 @@ function RunRow({ run }: { run: BackupRun }) {
             </p>
           )}
 
+          {snapshot && <DatabaseProtectionSummary databases={snapshot.manifest.databases ?? []} />}
+
           {run.error && <p className="max-w-2xl text-xs text-destructive">{run.error}</p>}
 
           {run.warnings.map((warning) => (
@@ -313,12 +319,14 @@ function RunRow({ run }: { run: BackupRun }) {
                     repository check covers.
                   </p>
 
+                  <DatabaseProtection databases={snapshot.manifest.databases ?? []} />
+
                   {snapshot.manifest.volumes.map((volume) => (
                     <div key={volume.name} className="border-t border-border pt-2">
                       <p className="font-medium">{volume.name}</p>
                       <p className="text-muted-foreground">
                         {volume.files} entries · {formatBytes(volume.bytes)} ·{" "}
-                        {volume.ownership.length} ownership records kept
+                        {(volume.ownership ?? []).length} ownership records kept
                       </p>
                       {(volume.sqliteDatabases ?? []).map((db) => (
                         <p key={db.path} className="text-success">

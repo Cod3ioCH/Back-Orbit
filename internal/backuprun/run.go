@@ -10,6 +10,8 @@
 package backuprun
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/Cod3ioCH/Back-Orbit/internal/projects"
@@ -130,19 +132,127 @@ type Manifest struct {
 	// Databases lists the logical exports in this snapshot. A restore reads
 	// these instead of the raw files underneath, which is the whole reason the
 	// dump was taken.
-	Databases []DatabaseDump `json:"databases,omitempty"`
+	// Always present, even when empty: "this snapshot contains no databases"
+	// is an answer, and a missing field is not.
+	Databases []DatabaseDump `json:"databases"`
 }
 
-// DatabaseDump is one logical export inside a snapshot.
+// ProtectionLevel says how well a database in a snapshot can be brought back.
+//
+// The distinction is the whole point of the analyzer and the exporters. A
+// snapshot that does not carry it forces whoever restores to guess, and the
+// moment they are guessing is the moment they can least afford to.
+type ProtectionLevel string
+
+const (
+	// ProtectionExported is a logical dump: the database described itself, and
+	// the export can be replayed into any compatible server.
+	ProtectionExported ProtectionLevel = "exported"
+	// ProtectionConsistent is a file captured through the engine's own backup
+	// API — coherent, but still the engine's own format. SQLite lands here.
+	ProtectionConsistent ProtectionLevel = "consistent"
+	// ProtectionFilesOnly is a plain copy of a data directory. It restores if
+	// the service was stopped, and may not if it was running.
+	ProtectionFilesOnly ProtectionLevel = "files_only"
+)
+
+// DatabaseDump is one database's presence in a snapshot, and how well it is
+// protected there.
 type DatabaseDump struct {
-	Technology string `json:"technology"`
-	Service    string `json:"service"`
-	// Path is where the dump sits inside the snapshot.
-	Path string `json:"path"`
-	// Command is what produced it, so a restore does not have to guess how to
-	// read the file back.
-	Command string `json:"command"`
-	Bytes   int64  `json:"bytes"`
+	Technology string          `json:"technology"`
+	Service    string          `json:"service"`
+	Level      ProtectionLevel `json:"level"`
+	// Path is where the export sits inside the snapshot. Empty when the
+	// database was only copied as files.
+	Path string `json:"path,omitempty"`
+	// Command is what produced the export, so a restore does not have to guess
+	// how to read the file back.
+	Command string `json:"command,omitempty"`
+	// User is the account the export was taken as, and the one a replay should
+	// use. Never a password.
+	User  string `json:"user,omitempty"`
+	Bytes int64  `json:"bytes,omitempty"`
+	// Note explains a level that is not "exported", so the limitation travels
+	// with the snapshot rather than living only in a run's warnings.
+	Note string `json:"note,omitempty"`
+}
+
+// MarshalJSON adds the replay command to the serialised form.
+//
+// Computed here rather than in the frontend so there is one source of truth
+// for how a dump is put back. A command the UI assembles itself would drift
+// from the one the exporter actually produced.
+// MarshalJSON keeps every list a list.
+func (v VolumeManifest) MarshalJSON() ([]byte, error) {
+	type plain VolumeManifest
+	copied := plain(v)
+	copied.Ownership = nonNil(copied.Ownership)
+	copied.SQLiteDatabases = nonNil(copied.SQLiteDatabases)
+	copied.Warnings = nonNil(copied.Warnings)
+	return json.Marshal(copied)
+}
+
+// MarshalJSON keeps every list a list.
+func (m Manifest) MarshalJSON() ([]byte, error) {
+	type plain Manifest
+	copied := plain(m)
+	copied.Volumes = nonNil(copied.Volumes)
+	copied.Databases = nonNil(copied.Databases)
+	return json.Marshal(copied)
+}
+
+func (d DatabaseDump) MarshalJSON() ([]byte, error) {
+	type plain DatabaseDump
+	return json.Marshal(struct {
+		plain
+		Replay string `json:"replay,omitempty"`
+	}{plain: plain(d), Replay: d.Replay()})
+}
+
+// Replay returns the command that puts this export back.
+//
+// A dump inside a snapshot is a file until someone knows what to do with it.
+// This is written for the person standing in front of a broken system, so it
+// names the service rather than a container id, and prompts for the password
+// rather than carrying one.
+func (d DatabaseDump) Replay() string {
+	if d.Level != ProtectionExported || d.Path == "" {
+		return ""
+	}
+	user := d.User
+	switch d.Technology {
+	case "postgresql":
+		if user == "" {
+			user = "postgres"
+		}
+		return fmt.Sprintf("docker compose exec -T %s psql -U %s < %s", d.Service, user, d.Path)
+	case "mysql", "mariadb":
+		client := "mysql"
+		if d.Technology == "mariadb" {
+			client = "mariadb"
+		}
+		if user == "" {
+			user = "root"
+		}
+		// -p without a value makes the client prompt, so no password is
+		// written down anywhere.
+		return fmt.Sprintf("docker compose exec -T %s %s -u %s -p < %s", d.Service, client, user, d.Path)
+	default:
+		return ""
+	}
+}
+
+// nonNil returns an empty slice instead of a nil one.
+//
+// A nil slice marshals to JSON null, and an API that returns null where it
+// usually returns an array makes every consumer defend against both. This one
+// did not: an empty volume produced a null ownership list and the snapshot
+// details crashed on `.length`, blanking the page.
+func nonNil[T any](values []T) []T {
+	if values == nil {
+		return []T{}
+	}
+	return values
 }
 
 // VolumeManifest is one volume's contribution to a snapshot.

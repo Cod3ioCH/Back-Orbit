@@ -182,6 +182,7 @@ func runSQLDump(
 		Service:    target.Service,
 		Path:       relative,
 		Command:    strings.Join(command, " "),
+		User:       firstNonEmpty(target.User, "root"),
 		Bytes:      info.Size(),
 		Duration:   time.Since(started),
 	}, nil

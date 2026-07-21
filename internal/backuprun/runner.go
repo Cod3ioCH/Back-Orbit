@@ -337,13 +337,14 @@ func (r *Runner) execute(ctx context.Context, run Run, config backup.RepositoryC
 	if len(dumps) > 0 {
 		stagedPaths = append(stagedPaths, filepath.Join(workDir, "back-orbit-dumps"))
 		for _, dump := range dumps {
-			manifest.Databases = append(manifest.Databases, DatabaseDump{
-				Technology: dump.Technology, Service: dump.Service,
-				Path: dump.Path, Command: dump.Command, Bytes: dump.Bytes,
-			})
 			run.BytesTotal += dump.Bytes
 		}
 	}
+
+	// Every detected database, at the level this run actually reached — the
+	// exports, the consistently captured SQLite files, and the ones only
+	// copied. The snapshot has to describe itself.
+	manifest.Databases = r.manifestEntries(ctx, run, dumps, manifest.Volumes)
 	r.persist(ctx, &run)
 
 	// What the analyzer found, held against what this run actually did. A

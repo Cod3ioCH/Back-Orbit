@@ -156,6 +156,71 @@ func (r *Runner) firstEnvValue(ctx context.Context, containerID string, keys []s
 	return "", nil
 }
 
+// manifestEntries turns what the analyzer found and what this run managed to
+// do into one list per snapshot.
+//
+// Every detected database appears, including the ones only copied as files.
+// A snapshot that records only its successes leaves whoever restores it to
+// work out the gaps from a run log that may be long gone — the snapshot has to
+// describe itself.
+func (r *Runner) manifestEntries(
+	ctx context.Context,
+	run Run,
+	dumps []dumpResult,
+	sqlite []VolumeManifest,
+) []DatabaseDump {
+	entries := make([]DatabaseDump, 0, len(dumps))
+	exported := map[string]bool{}
+	for _, dump := range dumps {
+		exported[dump.key] = true
+		entries = append(entries, DatabaseDump{
+			Technology: dump.Technology, Service: dump.Service,
+			Level: ProtectionExported, Path: dump.Path,
+			Command: dump.Command, User: dump.User, Bytes: dump.Bytes,
+		})
+	}
+
+	// SQLite is captured in place rather than exported to its own file, so it
+	// is recorded from the volume manifests it lives in.
+	for _, volume := range sqlite {
+		for _, capture := range volume.SQLiteDatabases {
+			entries = append(entries, DatabaseDump{
+				Technology: "sqlite", Service: volume.Name,
+				Level: ProtectionConsistent,
+				Path:  volume.Name + "/" + capture.Path,
+				Note:  capture.Method, Bytes: capture.Bytes,
+			})
+		}
+	}
+
+	if r.blueprints == nil || run.ProjectID == "" {
+		return entries
+	}
+	blueprint, err := r.blueprints.Get(ctx, run.ProjectID)
+	if err != nil {
+		return entries
+	}
+	for _, finding := range blueprint.Findings {
+		if finding.Kind != "database" || finding.Technology == "sqlite" {
+			continue
+		}
+		if finding.Confidence == projectanalyzer.ConfidencePossible {
+			continue
+		}
+		if exported[finding.Service+":"+finding.Technology] {
+			continue
+		}
+		entries = append(entries, DatabaseDump{
+			Technology: finding.Technology, Service: finding.Service,
+			Level: ProtectionFilesOnly,
+			Note: "Back-Orbit does not export this engine yet, so only its data " +
+				"directory was copied. That restores if the service was stopped, " +
+				"and may not if it was running.",
+		})
+	}
+	return entries
+}
+
 // dumpedKeys reports which databases were exported, so the consistency check
 // only warns about the ones that were not.
 func dumpedKeys(results []dumpResult) map[string]bool {

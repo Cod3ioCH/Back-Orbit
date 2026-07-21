@@ -30,6 +30,9 @@ type Result struct {
 	// Command is what produced it, so a restore does not have to guess how to
 	// read the file back.
 	Command string `json:"command"`
+	// User is the account the export was taken as, and the one a replay should
+	// use. Never a password.
+	User string `json:"user"`
 	// Bytes is the size of the dump.
 	Bytes int64 `json:"bytes"`
 	// Duration is how long it took.
@@ -140,6 +143,7 @@ func PostgreSQL(ctx context.Context, client docker.Client, target Target, stagin
 		Service:    target.Service,
 		Path:       relative,
 		Command:    strings.Join(command, " "),
+		User:       user,
 		Bytes:      info.Size(),
 		Duration:   time.Since(started),
 	}, nil

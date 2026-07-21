@@ -292,11 +292,31 @@ export interface VolumeManifest {
   warnings?: string[];
 }
 
+export type ProtectionLevel = "exported" | "consistent" | "files_only";
+
+/**
+ * One database's presence in a snapshot, and how well it is protected there.
+ * `replay` is produced by the server so there is one source of truth for how a
+ * dump is put back.
+ */
+export interface DatabaseDump {
+  technology: string;
+  service: string;
+  level: ProtectionLevel;
+  path?: string;
+  command?: string;
+  user?: string;
+  bytes: number;
+  note?: string;
+  replay?: string;
+}
+
 export interface BackupManifest {
   schemaVersion: number;
   project: string;
   createdAt: string;
   volumes: VolumeManifest[];
+  databases?: DatabaseDump[];
 }
 
 export interface BackupSnapshot {
