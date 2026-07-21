@@ -1,6 +1,12 @@
 package docker
 
-import "context"
+import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"sync"
+)
 
 // FakeClient is an in-memory Client implementation for tests, and for local
 // development when no Docker daemon is reachable. It is exported (not
@@ -11,6 +17,22 @@ type FakeClient struct {
 	ListErr         error
 	GetErr          error
 	ClosedCallCount int
+
+	// ArchiveTar is handed back by ContainerArchive, letting a test drive the
+	// staging code with a tar it constructed itself.
+	ArchiveTar []byte
+	// ArchiveErr, when set, makes ContainerArchive fail.
+	ArchiveErr error
+	// FakeSelfImage is returned by SelfImage.
+	FakeSelfImage string
+
+	mu sync.Mutex
+	// CreatedContainers records every helper container created, and
+	// RemovedContainers every one removed, so a test can assert that staging
+	// cleans up after itself even when it fails.
+	CreatedContainers []HelperContainerRequest
+	RemovedContainers []string
+	liveContainers    map[string]bool
 }
 
 // NewFakeClient creates a FakeClient reporting a connected status by
@@ -43,6 +65,66 @@ func (f *FakeClient) GetComposeProject(ctx context.Context, name string) (Compos
 		}
 	}
 	return ComposeProject{}, ErrProjectNotFound
+}
+
+func (f *FakeClient) CreateHelperContainer(ctx context.Context, req HelperContainerRequest) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.CreatedContainers = append(f.CreatedContainers, req)
+	id := "fake-helper-" + req.VolumeName
+	if f.liveContainers == nil {
+		f.liveContainers = map[string]bool{}
+	}
+	f.liveContainers[id] = true
+	return id, nil
+}
+
+func (f *FakeClient) ContainerArchive(ctx context.Context, containerID, path string) (io.ReadCloser, error) {
+	if f.ArchiveErr != nil {
+		return nil, f.ArchiveErr
+	}
+	return io.NopCloser(bytes.NewReader(f.ArchiveTar)), nil
+}
+
+func (f *FakeClient) RemoveContainer(ctx context.Context, containerID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.RemovedContainers = append(f.RemovedContainers, containerID)
+	delete(f.liveContainers, containerID)
+	return nil
+}
+
+func (f *FakeClient) ListHelperContainers(ctx context.Context) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	ids := make([]string, 0, len(f.liveContainers))
+	for id := range f.liveContainers {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (f *FakeClient) SelfImage(ctx context.Context) (string, error) {
+	if f.FakeSelfImage == "" {
+		return "", errors.New("docker: fake client has no self image configured")
+	}
+	return f.FakeSelfImage, nil
+}
+
+// LeakedContainers reports helper containers that were created but never
+// removed — what a test asserts is empty.
+func (f *FakeClient) LeakedContainers() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	leaked := make([]string, 0, len(f.liveContainers))
+	for id := range f.liveContainers {
+		leaked = append(leaked, id)
+	}
+	return leaked
 }
 
 func (f *FakeClient) Close() error {

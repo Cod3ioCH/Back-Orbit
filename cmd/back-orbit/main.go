@@ -17,6 +17,7 @@ import (
 	"github.com/Cod3ioCH/Back-Orbit/internal/database"
 	"github.com/Cod3ioCH/Back-Orbit/internal/docker"
 	"github.com/Cod3ioCH/Back-Orbit/internal/secrets"
+	"github.com/Cod3ioCH/Back-Orbit/internal/storage"
 	"github.com/Cod3ioCH/Back-Orbit/web"
 )
 
@@ -56,6 +57,23 @@ func unlockSecretStore(ctx context.Context, cfg config.Config, store *secrets.St
 	slog.Info("secret store unlocked from master key file", "path", cfg.MasterKeyFile)
 }
 
+// sweepOrphanedHelpers removes helper containers a previous run left behind.
+//
+// Staging always removes its own container, including on failure — but a
+// process killed outright cannot run that cleanup. Without this sweep those
+// containers would accumulate, each holding a reference to the volume it was
+// reading.
+func sweepOrphanedHelpers(ctx context.Context, dockerClient docker.Client) {
+	removed, err := storage.NewStager(dockerClient, "").SweepOrphans(ctx)
+	if err != nil {
+		slog.Warn("could not sweep orphaned helper containers", "error", err)
+		return
+	}
+	if removed > 0 {
+		slog.Info("removed helper containers left behind by an earlier run", "count", removed)
+	}
+}
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("back-orbit exited with error", "error", err)
@@ -91,6 +109,10 @@ func run() error {
 
 	secretStore := secrets.NewStore(db)
 	unlockSecretStore(context.Background(), cfg, secretStore)
+
+	if dockerClient != nil {
+		sweepOrphanedHelpers(context.Background(), dockerClient)
+	}
 
 	staticFS, err := web.DistFS()
 	if err != nil {

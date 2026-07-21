@@ -8,6 +8,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 )
 
@@ -118,6 +119,50 @@ type Client interface {
 	// ErrProjectNotFound if no containers carry that project label.
 	GetComposeProject(ctx context.Context, name string) (ComposeProject, error)
 
+	// CreateHelperContainer creates — but does not start — a container with
+	// the given named volume mounted read-only, for reading its contents.
+	//
+	// Nothing is ever executed inside it: the Docker archive API can read a
+	// container's filesystem while it sits in the "created" state, so the
+	// image's entrypoint never runs and no process exists to escape from.
+	// The container is labelled so orphans can be found and removed later.
+	CreateHelperContainer(ctx context.Context, req HelperContainerRequest) (string, error)
+
+	// ContainerArchive streams the contents of path inside a container as an
+	// uncompressed tar. The caller must close the returned reader.
+	ContainerArchive(ctx context.Context, containerID, path string) (io.ReadCloser, error)
+
+	// RemoveContainer force-removes a container. Removing one that is already
+	// gone is not an error, so cleanup can run unconditionally.
+	RemoveContainer(ctx context.Context, containerID string) error
+
+	// ListHelperContainers returns the ids of Back-Orbit helper containers
+	// still present, so a crash mid-backup cannot leak them forever.
+	ListHelperContainers(ctx context.Context) ([]string, error)
+
+	// SelfImage returns the image this Back-Orbit instance is running from,
+	// which is the natural image to build helper containers on: it is
+	// guaranteed to be present locally, so staging never needs to pull.
+	// Returns an error when not running inside a container.
+	SelfImage(ctx context.Context) (string, error)
+
 	// Close releases any resources held by the client.
 	Close() error
 }
+
+// HelperContainerRequest describes a helper container to create.
+type HelperContainerRequest struct {
+	// Image to base the container on. It is never executed.
+	Image string
+	// VolumeName is the named volume to mount.
+	VolumeName string
+	// MountPath is where the volume appears inside the container.
+	MountPath string
+	// Purpose is recorded as a label, so an orphan can be explained rather
+	// than just found.
+	Purpose string
+}
+
+// HelperContainerLabel marks every container Back-Orbit creates, so they can
+// be identified and cleaned up without guessing from names.
+const HelperContainerLabel = "io.back-orbit.helper"
