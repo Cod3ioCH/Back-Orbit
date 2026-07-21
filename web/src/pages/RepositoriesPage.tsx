@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   FolderCheck,
   HardDrive,
+  Loader2,
   Plus,
   RefreshCw,
   Trash2,
@@ -376,19 +377,33 @@ function RepositoryCard({ repository }: { repository: Repository }) {
           )}
         </div>
 
+        {/* Each action shows its own progress. Every button is disabled while
+            any one of them runs, so without a per-button signal the whole row
+            greys out with no indication of which action is under way — and
+            initialising a fresh repository takes long enough to look stuck. */}
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => checkMutation.mutate()}
             disabled={busy}
+            aria-busy={checkMutation.isPending}
           >
-            <RefreshCw className={checkMutation.isPending ? "size-4 animate-spin" : "size-4"} />
+            <RefreshCw className={cn("size-4", checkMutation.isPending && "animate-spin")} />
             Check
           </Button>
           {repository.status !== "ready" && (
-            <Button size="sm" onClick={() => initializeMutation.mutate()} disabled={busy}>
-              <Play className="size-4" />
+            <Button
+              size="sm"
+              onClick={() => initializeMutation.mutate()}
+              disabled={busy}
+              aria-busy={initializeMutation.isPending}
+            >
+              {initializeMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Play className="size-4" />
+              )}
               Initialise
             </Button>
           )}
@@ -397,9 +412,14 @@ function RepositoryCard({ repository }: { repository: Repository }) {
             size="sm"
             onClick={() => deleteMutation.mutate()}
             disabled={busy}
+            aria-busy={deleteMutation.isPending}
             aria-label={`Remove ${repository.name}`}
           >
-            <Trash2 className="size-4" />
+            {deleteMutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Trash2 className="size-4" />
+            )}
           </Button>
         </div>
       </CardContent>
